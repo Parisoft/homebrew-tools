@@ -22,13 +22,20 @@ porting a game's logic to a new platform.
 
 Each `mame-<system>` branch carries a compressed headless MAME binary built for a
 specific arcade manufacturer/driver set (e.g. `mame-konami`), plus the
-`mcp-server` (Node supervisor) and the MAME data directories (`artwork`, `roms`,
-`samples`). Together they expose ~67 MCP tools for debugging and
-reverse-engineering ROMs.
+`mcp-server` (Node supervisor), the MAME Lua plugin (`plugins/mcp/`), and the MAME
+data directories (`artwork`, `roms`, `samples`). Together they expose ~67 MCP
+tools for debugging and reverse-engineering ROMs.
 
 The binary is the headless fork from [Parisoft/mame-mcp](https://github.com/Parisoft/mame-mcp),
 which strips all display/graphics dependencies (`OSD=headless`) and adds MCP
 bindings for graphics, disassembly and execution coverage.
+
+> **Why the binary is stored compressed.** A full `src/mame/konami` headless build
+> is ~104 MB — over GitHub's 100 MB hard limit for a single file, so it cannot be
+> committed raw. `mame-konami.xz` is 16 MB. This is the same reason the upstream
+> README suggests stripping + `xz` for distribution. (A `SUBTARGET=tiny` build is
+> ~86 MB raw / 65 MB stripped and *would* fit under 100 MB, but it only contains 59
+> machines and no full manufacturer set.)
 
 ## Using a MAME binary
 
@@ -40,7 +47,8 @@ chmod +x mame
 cd mcp-server && npm install # install the MCP server deps
 ```
 
-Register with an MCP client:
+Register with an MCP client (the branch is fully self-contained — `MAME_DIR` can
+point straight at it):
 
 ```json
 {
@@ -58,9 +66,10 @@ Register with an MCP client:
 }
 ```
 
-> The Lua plugin (`plugins/mcp/`) and ROMs are **not** shipped on these branches —
-> point `MAME_DIR`/`MAME_ROMPATH` at a checkout of `mame-mcp` (for the plugin) and
-> your own ROM dumps. ROMs are never distributed with this repo.
+> The MAME Lua plugin (`plugins/mcp/`) **is** shipped on these branches — the
+> `mcp-server` launches MAME with `-plugin mcp -pluginspath <MAME_DIR>/plugins`, so
+> it works out of the box. ROMs are **never** distributed with this repo: point
+> `MAME_ROMPATH` at your own dumps.
 
 ---
 
@@ -137,8 +146,9 @@ ldd mame                 # should list only libc/libstdc++/libm/libgcc
 
 ### 4. Package the artifacts
 
-Keep only the binary, the `mcp-server` directory, and every data directory that
-contains a `dir.txt` (`artwork/`, `roms/`, `samples/`). Compress the binary:
+Keep only the binary, the `mcp-server` directory, the MAME Lua plugin
+(`plugins/mcp/`), and every data directory that contains a `dir.txt` (`artwork/`,
+`roms/`, `samples/`). Compress the binary:
 
 ```bash
 xz -6 -T2 -c mame > mame-konami.xz
@@ -149,7 +159,7 @@ Stage the artifacts into a clean folder:
 ```bash
 mkdir -p /tmp/artifacts
 cp mame-konami.xz /tmp/artifacts/
-cp -r mcp-server artwork roms samples /tmp/artifacts/
+cp -r mcp-server plugins artwork roms samples /tmp/artifacts/
 ```
 
 ### 5. Ship them on an orphaned branch
