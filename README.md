@@ -16,13 +16,21 @@ and a **headless emulator with an MCP server**:
 
 Both are built for **linux x86_64** and are relocatable — the checkout can live
 anywhere. `cc65/BUILD.txt` and `mesen/BUILD.txt` record the exact source commits,
-compilers and build commands; `SHA256SUMS.txt` has checksums for every file.
+compilers and build commands.
 
 ### Get the tools
 
 ```bash
 git clone --branch nesdev --single-branch https://github.com/Parisoft/homebrew-tools.git nesdev-tools
 cd nesdev-tools
+```
+
+The branch contains nothing but those two folders:
+
+```
+nesdev-tools/
+├── cc65/     # cc65 V2.18 toolchain
+└── mesen/    # mesen-mcp
 ```
 
 ### Quickstart — put the cc65 toolchain on `PATH`
@@ -32,10 +40,10 @@ export CC65_HOME="$(pwd)/cc65"
 export PATH="$CC65_HOME/bin:$PATH"
 ```
 
-…or use the bundled helper, which also puts `mesen-mcp` on `PATH`:
+Add `mesen/` to the same `PATH` to get the emulator as well:
 
 ```bash
-cd nesdev-tools && . ./env.sh
+export PATH="$(pwd)/cc65/bin:$(pwd)/mesen:$PATH"
 ```
 
 Verify (tested on a clean checkout, linux x86_64):
