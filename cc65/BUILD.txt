@@ -1,0 +1,23 @@
+cc65 V2.18 (6efb71b)
+================================================================================
+source       https://github.com/cc65/cc65
+tag          V2.18
+commit       6efb71bea773837c6fc4aae0c8270b2d70e3e69f
+built        2026-08-29T23:48:33Z (UTC)
+platform     linux x86_64  (Linux 6.1.158+ x86_64)
+compiler     gcc (Debian 12.2.0-14+deb12u1) 12.2.0
+build cmd    make -C src && make -C libsrc && make -C util
+             make -C src install PREFIX=<this folder>
+             make -C libsrc install PREFIX=<this folder>
+
+Layout
+--------------------------------------------------------------------------------
+bin/                cc65 ca65 ld65 cl65 ar65 co65 da65 od65 sp65 grc65
+                    chrcvt65 sim65
+share/cc65/         include/ asminc/ cfg/ lib/ target/
+include/ asminc/    convenience symlinks -> share/cc65/<same>
+cfg/ lib/ target/
+
+The symlinks let the toolchain resolve its data dirs relative to the binary,
+so "export PATH=<this folder>/bin:$PATH" alone is enough. Setting
+CC65_HOME=<this folder> (or <this folder>/share/cc65) also works.
