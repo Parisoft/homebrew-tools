@@ -36,15 +36,17 @@ nesdev-tools/
 ### Quickstart — put the cc65 toolchain on `PATH`
 
 ```bash
-export CC65_HOME="$(pwd)/cc65"
-export PATH="$CC65_HOME/bin:$PATH"
+cd nesdev-tools
+export CC65_HOME="$(pwd)/cc65"      # REQUIRED - where include/, lib/ and cfg/ live
+export PATH="$CC65_HOME/bin:$PATH"  # cc65, ca65, ld65, cl65, ...
+export PATH="$(pwd)/mesen:$PATH"    # mesen-mcp
 ```
 
-Add `mesen/` to the same `PATH` to get the emulator as well:
-
-```bash
-export PATH="$(pwd)/cc65/bin:$(pwd)/mesen:$PATH"
-```
+`CC65_HOME` must point at the directory that **contains** `include/`, `lib/` and
+`cfg/` — both `<checkout>/cc65` and `<checkout>/cc65/share/cc65` work. Putting the
+tools on `PATH` alone is *not* enough on cc65 2.18: it has no fallback to a
+path relative to its own binary, so without `CC65_HOME` it cannot find its
+headers or libraries.
 
 Verify (tested on a clean checkout, linux x86_64):
 
