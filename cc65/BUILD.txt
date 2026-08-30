@@ -18,6 +18,13 @@ share/cc65/         include/ asminc/ cfg/ lib/ target/
 include/ asminc/    convenience symlinks -> share/cc65/<same>
 cfg/ lib/ target/
 
-The symlinks let the toolchain resolve its data dirs relative to the binary,
-so "export PATH=<this folder>/bin:$PATH" alone is enough. Setting
-CC65_HOME=<this folder> (or <this folder>/share/cc65) also works.
+USAGE
+--------------------------------------------------------------------------------
+    export CC65_HOME=<this folder>
+    export PATH="$CC65_HOME/bin:$PATH"
+
+CC65_HOME is REQUIRED: it must point at the directory that contains include/,
+lib/ and cfg/. Both <this folder> and <this folder>/share/cc65 work because of
+the symlinks above. PATH alone is not enough - cc65 2.18 has no fallback to a
+path relative to its own binary, so without CC65_HOME it cannot find its headers
+or libraries.
