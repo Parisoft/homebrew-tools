@@ -93,21 +93,21 @@ replaces the current one.
 Agents (and humans) looking for everything needed to build **Nintendo 64 homebrew
 games** can find it on the **`n64dev` branch** of this repository. It is an *orphan
 branch* — no shared history with `main` — carrying a prebuilt
-[libdragon](https://github.com/DragonMinded/libdragon) SDK **and its mips64-elf
-cross-compiler** for **linux x86_64**, so that checking the branch out is the entire
-installation:
+[libdragon](https://github.com/DragonMinded/libdragon) SDK, its **mips64-elf
+cross-compiler**, and a **headless N64 emulator that speaks MCP** — all for
+**linux x86_64**, so that checking the branch out is the entire installation:
 
 | Path on `n64dev` | What it is | Version |
 | --- | --- | --- |
-| `libdragon/` | **libdragon install tree** — the whole `$N64_INST`: `mips64-elf/lib/libdragon.a` + `libdragonsys.a` and the linker scripts (`n64.ld`, `dso.ld`, `rsp.ld`), the 68 public headers (plus `libcart/`, `fatfs/`, the RSP `*.inc` files and `ucode.S`), `include/n64.mk` (which *is* the build system), and the 13 host tools: `n64tool`, `n64sym`, `n64elfcompress`, `ed64romconfig`, `audioconv64`, `mkdfs`, `dumpdfs`, `mkasset`, `mksprite`, `mkfont`, `n64dso`, `n64dso-extern`, `n64dso-msym`. | libdragon **trunk** (Git `c4a7e11`) |
-| `examples/` | The upstream example games, kept **outside** `libdragon/` on purpose: they are ordinary libdragon projects that only ever see the *installed* SDK, so compiling them **is** the install test. 22 ROMs, zero errors. | same commit |
-| `toolchain/` | The **mips64-elf cross-compiler**: GCC 16.2.0 (C and C++), GNU Binutils 2.45, newlib 4.4.0 — the versions libdragon pins. Trimmed from 1.6 GB to 162 MB (no debug info, no docs, unused multilibs), largest file 33 MB; linux x86_64 host binaries. | `binutils-2_45`, `gcc-16.2.0`, `newlib-4.4.0` |
-| `setup.sh`, `AGENTS.md` | `. ./setup.sh` exports the environment, `--verify` compiles a ROM to prove it works; `AGENTS.md` is the operational checklist for agents in resetting sandboxes. | |
+| `libdragon/` | **The whole toolchain side, and the folder *is* `$N64_INST`** (like `/opt/libdragon` from upstream's package): `include/n64.mk` (which is the build system), 68 public headers plus `libcart/`, `fatfs/`, the RSP `*.inc` files and `ucode.S`, `mips64-elf/lib/{libdragon.a,libdragonsys.a,n64.ld,dso.ld,rsp.ld}`, and the 13 host tools in `bin/` (`n64tool`, `n64sym`, `n64elfcompress`, `ed64romconfig`, `audioconv64`, `mkdfs`, `dumpdfs`, `mkasset`, `mksprite`, `mkfont`, `n64dso`, `n64dso-extern`, `n64dso-msym`). Inside it: `toolchain/` (mips64-elf GCC 16.2.0 + binutils 2.45 + newlib 4.4.0, trimmed 1.6 GB → 162 MB, no file over 33 MB), `examples/` (upstream games, parked outside the SDK's own tree so compiling them **is** the install test: 22 ROMs, zero errors) and `src/audio/libxm/` (the 2 private headers `examples/audioplayer` includes). | libdragon **trunk** `c4a7e11` |
+| `ares-mcp/` | **Headless [ares](https://github.com/ares-emulator/ares) N64 core** behind an [MCP](https://modelcontextprotocol.io) server: `n64_load` `n64_run` `n64_input` `n64_screenshot` `n64_log` `n64_status` `n64_record` `n64_pause` `n64_resume` `n64_stop` over JSON-RPC on stdio, plus a `run` CLI for one-shot boots, a GDB remote server, and PNG/WAV capture. Ships upstream's 27-check e2e client, its generated `green.z64` control ROM, and `boot_check.py` (one `BOOT OK`/`BOOT FAIL` line, distinct exit codes, bounded reads so it cannot hang an automation). | Parisoft/ares-mcp `69ecdb6` |
+| `setup.sh`, `AGENTS.md` | `. ./setup.sh` exports the environment for both halves (incl. `N64_MCP`); `--verify` compiles a ROM, `--smoke-test` boots it in the emulator, `--verify-all` runs the whole example matrix *and* the emulator's e2e suite. `AGENTS.md` is the operational checklist for agents in resetting sandboxes. | |
 
-Nothing else is kept — no libdragon sources, objects, docs or tests: 1527 files,
-182 MB, and a shallow clone transfers 55.6 MiB in ~6 s. `libdragon/BUILD.txt` records
-the source commit, the cross-toolchain versions, the exact build commands and the
-trimming recipe.
+Nothing else is kept — no libdragon sources, objects, docs or tests: 1536 files,
+201 MB, and a shallow clone transfers ~57 MiB in ~5 s. Each folder carries its own
+`BUILD.txt` recording the source commit, the compilers, the exact commands and the
+verification results — including the cross-compiler's 1.6 GB → 162 MB trimming recipe
+and its traps, and why the emulator's RDP renderer is absent here.
 
 What libdragon brings to a game: RDPQ accelerated 2D (sprites of arbitrary size and
 pixel format, a text engine, custom color combiner and blender), an RSP audio mixer
@@ -129,12 +129,13 @@ That is the whole setup: one shallow clone, one script, nothing to install.
 
 ```
 n64dev/
-├── toolchain/     # mips64-elf GCC 16.2.0 + binutils 2.45 + newlib 4.4.0
-├── libdragon/     # the SDK install tree (this becomes $N64_INST)
-├── examples/      # upstream examples, built against it: they are the install test
-├── src/           # 2 private libdragon headers, needed only by examples/audioplayer
-├── setup.sh       # exports the environment; --verify builds a ROM to prove it works
-└── AGENTS.md      # the operational version of the text you are reading
+├── setup.sh       # exports the environment; --verify / --smoke-test / --verify-all
+├── AGENTS.md      # the operational version of the text you are reading
+├── libdragon/     # $N64_INST: include/n64.mk, bin/, mips64-elf/{include,lib}
+│   ├── toolchain/ #   mips64-elf GCC 16.2.0 + binutils 2.45 + newlib 4.4.0
+│   ├── examples/  #   upstream games: compiling them is the install test (22 ROMs)
+│   └── src/       #   2 private headers, needed only by examples/audioplayer
+└── ares-mcp/      # headless N64 emulator: bin/ares-mcp + test/ (e2e, boot_check.py)
 ```
 
 ### Setup — one script, and the environment it exports
@@ -148,9 +149,10 @@ cd ~/n64dev && . ./setup.sh && make -C examples/rdpqdemo
 ```
 
 ```bash
-. ./setup.sh              # N64_INST, N64_GCCPREFIX, PATH — 0.003 s, repeatable
-./setup.sh --verify       # builds examples/helloworld in a temp dir, checks its header
-./setup.sh --verify-all   # the whole example matrix: 22 ROMs (~17 s on 2 cores)
+. ./setup.sh              # N64_INST, N64_GCCPREFIX, PATH, N64_MCP — 0.003 s, repeatable
+./setup.sh --verify       # builds a ROM in a temp dir, checks its header        (0.2 s)
+./setup.sh --smoke-test   # ...then boots it in ares-mcp over MCP               (2.3 s)
+./setup.sh --verify-all   # all 22 example ROMs + the emulator's 27-check suite  (~18 s)
 ```
 
 Sourcing is silent by design — it only exports, and an agent that prefixes every
@@ -241,15 +243,43 @@ the `N64_ROM_*` knobs (`TITLE`, `CATEGORY`, `REGION`, `REGIONFREE`, `SAVETYPE`,
 
 ### Running the ROM
 
-libdragon uses corners of the hardware that commercial games never touched, so it
-needs an emulator that models the real chip: [Ares](https://github.com/ares-emulator/ares),
-with *Homebrew mode* enabled for the developer checks. On hardware any cart that
+The branch ships the runner, so verifying a build needs no display:
+
+```bash
+ares-mcp run --rom mygame.z64 --homebrew --frames 600 --screenshot /tmp/s.png --wav /tmp/a.wav
+python3 ares-mcp/test/boot_check.py --rom mygame.z64      # BOOT OK / BOOT FAIL, exit code
+python3 ares-mcp/test/mcp_client.py --rom mygame.z64      # one-shot MCP session
+```
+
+`ares-mcp mcp` is the same core as an MCP server for interactive work: advance frames,
+tap buttons and both analog axes (ports 1-4), read the emulator log including CPU
+exceptions, capture PNG/WAV, load save states, attach GDB via `--gdb-port`. **One
+honest limit:** RDP-rendered pixels need a Vulkan driver *and* an ares build with
+paraLLEl-RDP, whose deps come from a GitHub release asset — unavailable where this
+binary was built, so screenshots of RDP-drawn scenes are blank while emulation, input,
+audio, the log and GDB all work; `ares-mcp/test/green.z64`, drawn by the CPU, is the
+control that proves the pixel path itself. For full-accuracy video use
+[Ares](https://github.com/ares-emulator/ares) with *Homebrew mode* on a GPU machine. On hardware any cart that
 loads custom ROMs works (SC64, 64drive, EverDrive64); use a loader that speaks
 libdragon's debug protocol — [UNFLoader](https://github.com/buu342/N64-UNFLoader),
 [g64drive](https://github.com/rasky/g64drive), [ed64log](https://github.com/anacierdem/ed64)
 — to see `debugf()` in a console.
 
 ### Rebuilding the SDK that the branch ships
+
+The emulator is the easier rebuild: the fork vendors everything and
+`-DARES_BUILD_MCP=ON` skips the GUI, SDL and the prebuilt deps payload.
+
+```bash
+pip install --break-system-packages cmake ninja     # the image has neither
+git clone https://github.com/Parisoft/ares-mcp && cd ares-mcp
+cmake -B build -G Ninja -DARES_BUILD_MCP=ON -DCMAKE_BUILD_TYPE=Release
+ninja -C build mcp -j2                              # 98 targets, ~5 min on 2 cores
+python3 mcp/test/mcp_client.py                      # 27 checks -> "ALL OK"
+strip -s build/rundir/bin/ares-mcp                   # 6.9 MB -> 6.0 MB
+```
+
+libdragon needs the cross-compiler first:
 
 ```bash
 git clone https://github.com/DragonMinded/libdragon.git && cd libdragon
@@ -326,7 +356,7 @@ porting a game's logic to a new platform.
 
 | Branch | Contents |
 |---|---|
-| `n64dev` | **libdragon** SDK install tree + **mips64-elf** GCC toolchain + examples (N64 homebrew, self-contained) |
+| `n64dev` | **libdragon** SDK + **mips64-elf** GCC toolchain + examples + **ares-mcp** headless emulator (N64 homebrew, self-contained) |
 | `nesdev` | **cc65** toolchain + **mesen-mcp** (NES / SNES development) |
 | `mame-konami` | Headless **konami** MAME binary + MCP server |
 | `mame-capcom` | Headless **capcom** MAME binary + MCP server |
