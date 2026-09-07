@@ -205,7 +205,7 @@ $(BUILD_DIR)/$(ROMNAME).elf: $(OBJS)
 
 $(ROMNAME).z64: N64_ROM_TITLE    = "My Game"    # ROM header…
 $(ROMNAME).z64: N64_ROM_SAVETYPE = eeprom4k     # …battery save…
-$(ROMNAME).z64: N64_ROM_RTC      = true        # …and cart/emulator hints
+$(ROMNAME).z64: N64_ROM_RTC      = true         # …and cart/emulator hints
 
 clean:
 	$(RM) -r $(BUILD_DIR) *.z64
@@ -276,10 +276,10 @@ a machine that could reach nothing but GitHub and PyPI:
   by a stub that only creates the `-o` file — binutils' own `missing` wrapper exits
   127 and kills `bfd`.
 
+## Tooling for reverse-engineer arcade games
+
 Build artifacts and tooling for arcade ROM **disassembly** and **porting to new
 systems**, driven by AI agents.
-
-## Tooling for reverse-engineer arcade games
 
 Agents use these binaries to reverse-engineer arcade games: load a game into a
 headless [MAME](https://www.mamedev.org/) and drive it over the
