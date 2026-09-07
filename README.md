@@ -93,16 +93,21 @@ replaces the current one.
 Agents (and humans) looking for everything needed to build **Nintendo 64 homebrew
 games** can find it on the **`n64dev` branch** of this repository. It is an *orphan
 branch* — no shared history with `main` — carrying a prebuilt
-[libdragon](https://github.com/DragonMinded/libdragon) SDK for **linux x86_64**:
+[libdragon](https://github.com/DragonMinded/libdragon) SDK **and its mips64-elf
+cross-compiler** for **linux x86_64**, so that checking the branch out is the entire
+installation:
 
 | Path on `n64dev` | What it is | Version |
 | --- | --- | --- |
 | `libdragon/` | **libdragon install tree** — the whole `$N64_INST`: `mips64-elf/lib/libdragon.a` + `libdragonsys.a` and the linker scripts (`n64.ld`, `dso.ld`, `rsp.ld`), the 68 public headers (plus `libcart/`, `fatfs/`, the RSP `*.inc` files and `ucode.S`), `include/n64.mk` (which *is* the build system), and the 13 host tools: `n64tool`, `n64sym`, `n64elfcompress`, `ed64romconfig`, `audioconv64`, `mkdfs`, `dumpdfs`, `mkasset`, `mksprite`, `mkfont`, `n64dso`, `n64dso-extern`, `n64dso-msym`. | libdragon **trunk** (Git `c4a7e11`) |
 | `examples/` | The upstream example games, kept **outside** `libdragon/` on purpose: they are ordinary libdragon projects that only ever see the *installed* SDK, so compiling them **is** the install test. 22 ROMs, zero errors. | same commit |
+| `toolchain/` | The **mips64-elf cross-compiler**: GCC 16.2.0 (C and C++), GNU Binutils 2.45, newlib 4.4.0 — the versions libdragon pins. Trimmed from 1.6 GB to 162 MB (no debug info, no docs, unused multilibs), largest file 33 MB; linux x86_64 host binaries. | `binutils-2_45`, `gcc-16.2.0`, `newlib-4.4.0` |
+| `setup.sh`, `AGENTS.md` | `. ./setup.sh` exports the environment, `--verify` compiles a ROM to prove it works; `AGENTS.md` is the operational checklist for agents in resetting sandboxes. | |
 
-Nothing else is kept — no libdragon sources, objects, docs or tests: 293 files,
-21 MB. `libdragon/BUILD.txt` records the source commit, the cross-toolchain
-versions and the exact commands used.
+Nothing else is kept — no libdragon sources, objects, docs or tests: 1527 files,
+182 MB, and a shallow clone transfers 55.6 MiB in ~6 s. `libdragon/BUILD.txt` records
+the source commit, the cross-toolchain versions, the exact build commands and the
+trimming recipe.
 
 What libdragon brings to a game: RDPQ accelerated 2D (sprites of arbitrary size and
 pixel format, a text engine, custom color combiner and blender), an RSP audio mixer
@@ -115,53 +120,61 @@ without touching your sources.
 ### Get the tools
 
 ```bash
-git clone --branch n64dev --single-branch https://github.com/Parisoft/homebrew-tools.git n64dev-tools
-cd n64dev-tools
+git clone --depth 1 --single-branch --branch n64dev \
+    https://github.com/Parisoft/homebrew-tools.git n64dev
+cd n64dev && . ./setup.sh
 ```
 
-The branch contains nothing but those two folders:
+That is the whole setup: one shallow clone, one script, nothing to install.
 
 ```
-n64dev-tools/
+n64dev/
+├── toolchain/     # mips64-elf GCC 16.2.0 + binutils 2.45 + newlib 4.4.0
 ├── libdragon/     # the SDK install tree (this becomes $N64_INST)
-└── examples/      # upstream examples, built against it
+├── examples/      # upstream examples, built against it: they are the install test
+├── src/           # 2 private libdragon headers, needed only by examples/audioplayer
+├── setup.sh       # exports the environment; --verify builds a ROM to prove it works
+└── AGENTS.md      # the operational version of the text you are reading
 ```
 
-### Setup — the cross-compiler, then the environment
+### Setup — one script, and the environment it exports
 
-libdragon splits its environment in two halves, and this branch ships exactly one
-of them: the **SDK**. The **mips64-elf GCC** cross-compiler is not on the branch
-(1.5 GB unpacked, far over GitHub's 100 MB per-file cap); it comes from libdragon's
-own rolling toolchain release, installed once per machine:
+`setup.sh` only exports variables, so **source it again in every shell you open**.
+An agent's tool calls usually each start a fresh process, and the previous `export`s
+die with their shell, so the pattern that works is to prefix build commands:
 
 ```bash
-# Debian/Ubuntu — the release also has .rpm (Fedora), aarch64 and a Windows zip
-wget -q https://github.com/DragonMinded/libdragon/releases/download/toolchain-continuous-prerelease/gcc-toolchain-mips64-x86_64.deb
-sudo dpkg -i gcc-toolchain-mips64-x86_64.deb && rm gcc-toolchain-mips64-x86_64.deb
+cd ~/n64dev && . ./setup.sh && make -C examples/rdpqdemo
 ```
-
-The package installs `mips64-elf-{gcc,g++,as,ld,ar,objcopy,…}` under `/opt/libdragon`
-and exports `N64_INST=/opt/libdragon` by itself through `/etc/profile.d`. To use
-**this branch's** SDK instead, split the two prefixes apart — `n64.mk` supports the
-split out of the box (`N64_GCCPREFIX ?= $(N64_INST)`):
 
 ```bash
-cd n64dev-tools
-export N64_INST="$PWD/libdragon"               # SDK from this branch
-export N64_GCCPREFIX=/opt/libdragon            # where mips64-elf-gcc lives
-export PATH="$N64_INST/bin:$N64_GCCPREFIX/bin:$PATH"
+. ./setup.sh              # N64_INST, N64_GCCPREFIX, PATH — 0.003 s, repeatable
+./setup.sh --verify       # builds examples/helloworld in a temp dir, checks its header
+./setup.sh --verify-all   # the whole example matrix: 22 ROMs (~17 s on 2 cores)
 ```
+
+which is just the three variables upstream's own install uses:
 
 | Variable | Meaning |
 |---|---|
 | `N64_INST` | **Required.** Root of the libdragon install. `n64.mk` is read from `$(N64_INST)/include/n64.mk`, headers from `$(N64_INST)/mips64-elf/include`, libraries from `$(N64_INST)/mips64-elf/lib`, asset tools from `$(N64_INST)/bin`. |
-| `N64_GCCPREFIX` | Root holding `bin/mips64-elf-*`. Defaults to `N64_INST`; you only need it because the SDK here is a separate folder. |
+| `N64_GCCPREFIX` | Root holding `bin/mips64-elf-*`. Defaults to `N64_INST`; on this branch it is set to `toolchain/`, which is what lets the SDK stay a separate folder. |
 | `N64_TARGET` | Triplet of the cross toolchain, `mips64-elf`. Keep the **64-bit** one — libdragon's point is the `o64` ABI (full 64-bit R4300 registers), which the old 32-bit `mips-elf` toolchains cannot emit. |
 
-Keeping every default is also fine: `sudo cp -a libdragon/. /opt/libdragon/` drops
-this SDK on top of the deb's prefix and then no variable has to be set at all.
+On a machine that already has libdragon's official rolling toolchain package —
+`gcc-toolchain-mips64-x86_64.deb` (there is also an `.rpm`, an aarch64 build and a
+Windows zip, from the release tag `toolchain-continuous-prerelease`) — `setup.sh`
+skips the in-tree compiler and uses `/opt/libdragon`, which that package also exports
+as `N64_INST` itself through `/etc/profile.d`. Shipping the compiler inside the branch
+instead is deliberate: **GitHub release assets are not reachable from every sandbox**
+(`release-assets.githubusercontent.com` is firewalled in the one this branch was built
+in, and `sudo` is unavailable there), and rebuilding the compiler from source costs
+~42 minutes that a resetting sandbox pays again and again. Trimmed to 162 MB with no
+file over 33 MB it fits GitHub's per-object cap, and a flat tree means no extraction
+step either.
 
-Verify (tested on a clean checkout of `n64dev`, linux x86_64):
+Verify by hand if you prefer — the asset tools have no `--version`, so their usage
+banner is the check:
 
 ```console
 $ mips64-elf-gcc --version
@@ -174,11 +187,15 @@ $ "$N64_INST/bin/mksprite"
 Usage: mksprite [flags] <input files...>
 ```
 
+Measured in a 2-core sandbox, cold: clone 6 s, setup 0.003 s, one ROM 0.2 s, all
+22 ROMs 17 s.
+
 ### Quickstart — build a ROM
 
 ```console
+$ . ./setup.sh
 $ make -C examples helloworld
-Using N64_INST=/home/me/n64dev-tools/libdragon
+Using N64_INST=/home/me/n64dev/libdragon
     [CC] src/main.c
     [LD] build/helloworld.elf
       text       data        bss      total filename
@@ -249,15 +266,30 @@ make -C <test>/examples -j"$(nproc)"     # expect 22 .z64, 6 .dso, 10 .dfs, 0 er
 ```
 
 `audioplayer` is the single example that reaches into libdragon's private headers
-(`../../src/audio/libxm/xm_internal.h`), so give `<test>` a `src` symlink to the
-checkout — or skip that one. Then ship only what survived: `include/`, `bin/`,
-`mips64-elf/` of `<install-prefix>`, on an orphan branch:
+(`../../src/audio/libxm/xm_internal.h`); the branch keeps just those two headers in
+`src/`, so the matrix is 22/22 with no symlinks and no skips. Then ship only what
+survived — `include/`, `bin/`, `mips64-elf/` of `<install-prefix>` — plus a trimmed
+copy of the compiler, on an orphan branch:
 
 ```bash
 git checkout --orphan n64dev && git rm -rf .
 cp -a <install-prefix> libdragon && cp -a <test>/examples examples
-git add -A && git commit -m "n64dev: prebuilt libdragon SDK" && git push -f origin n64dev
+cp -a <toolchain-prefix> toolchain && cd toolchain
+rm -rf share include lib/libcc1.so* lib/bfd-plugins bin/mips64-elf-lto-dump \
+       lib/gcc/mips64-elf/*/plugin lib/gcc/mips64-elf/*/install-tools
+rm -rf mips64-elf/lib/{el,soft-float} lib/gcc/mips64-elf/*/el lib/gcc/mips64-elf/*/soft-float
+find bin libexec mips64-elf/bin -type f -perm -u+x -exec strip -s {} +
+find mips64-elf/lib lib/gcc -type f \( -name '*.a' -o -name '*.o' \) \
+     -exec ./bin/mips64-elf-strip --strip-debug {} +      # 1.6 GB -> 162 MB
+cd .. && git add -A && git commit -m "n64dev: prebuilt libdragon SDK" && git push -f origin n64dev
 ```
+
+Three traps in that trim, all of them hit while doing it (they are recorded with more
+detail in `libdragon/BUILD.txt`): `mips64-elf/bin/` must stay, because GCC searches it
+for `as`/`ld` and silently falls back to the host binutils otherwise; `libc.a`/`libg.a`
+are hardlinks, so stripping one in place truncates the other; and the *host* `strip`
+cannot read MIPS objects — it reports an error and changes nothing, so use
+`mips64-elf-strip` for the target archives.
 
 If the **cross-compiler** itself has to be rebuilt, libdragon pins its versions in
 `tools/build-toolchain.sh` (binutils 2.45, GCC 16.2.0, newlib 4.4.0.20231231 at the
@@ -292,7 +324,7 @@ porting a game's logic to a new platform.
 
 | Branch | Contents |
 |---|---|
-| `n64dev` | **libdragon** SDK install tree + examples (N64 homebrew) |
+| `n64dev` | **libdragon** SDK install tree + **mips64-elf** GCC toolchain + examples (N64 homebrew, self-contained) |
 | `nesdev` | **cc65** toolchain + **mesen-mcp** (NES / SNES development) |
 | `mame-konami` | Headless **konami** MAME binary + MCP server |
 | `mame-capcom` | Headless **capcom** MAME binary + MCP server |
