@@ -1,0 +1,44 @@
+libdragon c4a7e11 (trunk, 2026-08-29)
+================================================================================
+source       https://github.com/DragonMinded/libdragon
+branch       trunk
+commit       c4a7e119eff1cfad07adcfa892a2910c40d8bdb8
+built        2026-09-07T19:40:49Z (UTC)
+platform     linux x86_64  (Linux 6.1.158+ x86_64)
+toolchain    GCC 16.2.0 / GNU Binutils 2.45 (newlib 4.4.0.20231231), built from source from
+             the same versions libdragon pins in tools/build-toolchain.sh
+build cmd    make -j2 install-mk && make -j2 libdragon && make -j2 tools
+             make -j2 install && make -j2 tools-install   (N64_INST=<this folder>)
+             make -C examples -j2                          (examples/ lives OUTSIDE
+             this folder - that is the install test)
+
+Layout
+--------------------------------------------------------------------------------
+bin/                13 host tools: n64tool n64sym n64elfcompress ed64romconfig
+                    audioconv64 mkdfs dumpdfs mkasset mksprite mkfont n64dso
+                    n64dso-msym n64dso-extern
+include/n64.mk      the build system - every libdragon project includes this
+mips64-elf/include/ 68 headers + *.inc + ucode.S + libcart/ + fatfs/
+mips64-elf/lib/     libdragon.a libdragonsys.a n64.ld dso.ld rsp.ld
+
+USAGE
+--------------------------------------------------------------------------------
+    export N64_INST=<this folder>
+    export N64_GCCPREFIX=/opt/libdragon      # where mips64-elf-gcc lives
+    export PATH="$N64_INST/bin:$N64_GCCPREFIX/bin:$PATH"
+
+This folder is a libdragon install tree WITHOUT the cross-compiler: mips64-elf
+GCC is 1.5 GB raw and GitHub caps single files at 100 MB, so it is not shipped
+here. Get it from libdragon's own rolling release, which installs into
+/opt/libdragon:
+
+    wget https://github.com/DragonMinded/libdragon/releases/download/\
+toolchain-continuous-prerelease/gcc-toolchain-mips64-x86_64.deb
+    sudo dpkg -i gcc-toolchain-mips64-x86_64.deb
+
+That deb also exports N64_INST=/opt/libdragon itself, so with the deb alone you
+need no environment at all - setting N64_GCCPREFIX is only needed because the SDK
+here is a separate folder. n64.mk supports the split (N64_GCCPREFIX ?= N64_INST).
+
+Alternatively drop this tree on top of the deb's prefix and keep using the
+defaults:  sudo cp -a <this folder>/. /opt/libdragon/
