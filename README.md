@@ -1,6 +1,6 @@
 # homebrew-tools
 
-Tooling for homebrew game development.
+Tooling for homebrew game development and reverse-engineer arcade games.
 
 ## NES / SNES development tools — the `nesdev` branch
 
@@ -89,6 +89,8 @@ GBA's `gba_bios.bin`) go in `<home>/Firmware/`. One ROM per process — `load_ro
 replaces the current one.
 Build artifacts and tooling for arcade ROM **disassembly** and **porting to new
 systems**, driven by AI agents.
+
+## Tooling for reverse-engineer arcade games
 
 Agents use these binaries to reverse-engineer arcade games: load a game into a
 headless [MAME](https://www.mamedev.org/) and drive it over the
