@@ -153,7 +153,9 @@ cd ~/n64dev && . ./setup.sh && make -C examples/rdpqdemo
 ./setup.sh --verify-all   # the whole example matrix: 22 ROMs (~17 s on 2 cores)
 ```
 
-which is just the three variables upstream's own install uses:
+Sourcing is silent by design — it only exports, and an agent that prefixes every
+command with it should not pay for chatter. Which is just the three variables upstream's
+own install uses:
 
 | Variable | Meaning |
 |---|---|
