@@ -120,12 +120,14 @@ without touching your sources.
 ### Get the tools
 
 From a checkout of `main`, one command does the whole thing — it shallow-clones the
-branch into `n64dev/`, makes the binaries executable, writes `n64dev/env.sh` next to
-the checkout, then *proves* the result by building `examples/helloworld` and booting
-that ROM in the emulator (~7 s end to end; `git` and the network are all it needs):
+branch into `n64dev/`, makes the binaries executable, writes `n64dev/env.sh` next to the
+checkout, and checks that the tree is complete and that the compiler, linker and
+emulator actually run. It **compiles nothing** (~4 s, `git` and the network are all it
+needs); verifying a real build is a deliberate step afterwards:
 
 ```bash
 ./bootstrap.sh n64dev
+cd n64dev && ./setup.sh --verify      # 0.2 s: build a ROM, link it, check its header
 ```
 
 By hand it is the same two lines the script runs, and just as complete — the checkout

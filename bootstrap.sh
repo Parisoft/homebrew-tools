@@ -158,25 +158,24 @@ EOF
 }
 
 # ---------------------------------------------------------------- n64dev ----
+# The branch carries everything (SDK, cross-compiler, emulator), so there is nothing to
+# build or download here: the target unpacks the checkout, makes it runnable and checks
+# that it is COMPLETE. It deliberately compiles no ROM - that is `./setup.sh --verify`,
+# which the user (or a project's CI) runs on purpose.
 setup_n64dev() {
   need git
   local dir="$BASE_DIR/n64dev"
   clone_branch n64dev "$dir"
 
-  [ -f "$dir/libdragon/include/n64.mk" ] || die "libdragon/include/n64.mk missing from the n64dev checkout."
-  [ -x "$dir/libdragon/toolchain/bin/mips64-elf-gcc" ] \
-    || die "libdragon/toolchain is missing (a pruned/partial checkout): rm -rf '$dir' and re-run."
-
-  msg "Making binaries executable"
+  msg "Making the shipped binaries executable"
   chmod +x "$dir/setup.sh"
   chmod +x "$dir"/libdragon/bin/* "$dir"/libdragon/toolchain/bin/* 2>/dev/null || true
   [ -f "$dir/ares-mcp/bin/ares-mcp" ] && chmod +x "$dir/ares-mcp/bin/ares-mcp"
-  ok "$(ls -1 "$dir/libdragon/bin" | wc -l) host tools, gcc for $("$dir"/libdragon/toolchain/bin/mips64-elf-gcc -dumpmachine)"
+  ok "$(ls -1 "$dir/libdragon/bin" | wc -l) host tools, $(ls -1 "$dir"/libdragon/toolchain/bin/mips64-elf-* 2>/dev/null | wc -l) compiler and linker binaries"
 
-  # The checkout carries its own environment script (it knows where libdragon/,
-  # toolchain/ and ares-mcp/ sit, and falls back to /opt/libdragon); env.sh only pins
-  # N64DEV_ROOT so that `source env.sh` also works from another directory and in
-  # shells without BASH_SOURCE.
+  # env.sh defers to the branch's own setup.sh, which owns the paths (and the
+  # /opt/libdragon fallback). N64DEV_ROOT is pinned so `source env.sh` also works from
+  # another directory and in shells that have no BASH_SOURCE.
   cat > "$dir/env.sh" <<EOF
 # source this file to use the n64dev tools
 export N64DEV_ROOT="$dir"
@@ -184,21 +183,46 @@ export N64DEV_ROOT="$dir"
 EOF
   ok "wrote $dir/env.sh"
 
-  msg "Verifying the compiler by building examples/helloworld"
-  "$dir/setup.sh" --verify || die "setup.sh --verify failed; see libdragon/BUILD.txt for the tree layout."
+  msg "Checking that the checkout is complete"
+  # Not paranoia: while packing this branch a root .gitignore containing *.o silently
+  # dropped the toolchain's crt*.o, and a partial tree still *looks* fine until the
+  # first link. Catching it here costs one ls, not a debugging session.
+  local f
+  for f in libdragon/include/n64.mk \
+           libdragon/mips64-elf/lib/libdragon.a \
+           libdragon/mips64-elf/lib/libdragonsys.a \
+           libdragon/mips64-elf/lib/n64.ld \
+           libdragon/toolchain/bin/mips64-elf-gcc; do
+    [ -e "$dir/$f" ] || die "$f is missing: the clone is partial - rm -rf '$dir' and re-run."
+  done
+  # "some crt*.o are there" is not enough - one missing file is already a link error,
+  # and they live in a version-directory, so check each one by name through a glob.
+  local o
+  for o in crti.o crtn.o crtbegin.o crtend.o libgcc.a; do
+    compgen -G "$dir/libdragon/toolchain/lib/gcc/*/*/$o" >/dev/null \
+      || die "$o is missing from the toolchain: nothing would link (a root .gitignore with *.o did this once)."
+  done
+  ok "n64.mk, libdragon.a, libdragonsys.a, n64.ld, and crti/crtn/crtbegin/crtend + libgcc.a"
 
-  if [ -x "$dir/ares-mcp/bin/ares-mcp" ] && command -v python3 >/dev/null 2>&1; then
-    msg "Verifying the emulator by booting that ROM over MCP (headless)"
-    local out
-    if out=$("$dir/setup.sh" --smoke-test 2>&1); then
-      printf '%s\n' "$out" | grep -E '^BOOT OK:' || true
-      ok "ares-mcp booted the ROM"
+  msg "Checking that the binaries run"
+  # This is a prebuilt linux x86_64 tree, so "it executes" is the real risk, not
+  # "it is misconfigured"; --version is the cheapest proof for each side of the SDK.
+  local t v
+  for t in mips64-elf-gcc mips64-elf-ld; do
+    if v=$("$dir"/libdragon/toolchain/bin/"$t" --version 2>&1 | head -1); then
+      printf '  %-15s %s\n' "$t" "$v"
     else
-      warn "the emulator check failed; the compiler works, so builds are unaffected:"
-      printf '%s\n' "$out" | tail -5 >&2
+      die "$t did not run - this branch ships linux x86_64 binaries [${v:-no output}]"
+    fi
+  done
+  if [ -x "$dir/ares-mcp/bin/ares-mcp" ]; then
+    if "$dir/ares-mcp/bin/ares-mcp" --help >/dev/null 2>&1; then
+      ok "ares-mcp runs headless"
+    else
+      warn "ares-mcp --help returned non-zero (it is an stdio MCP server; this may be fine)"
     fi
   else
-    warn "skipped the emulator check (no ares-mcp binary or no python3)."
+    warn "ares-mcp/bin/ares-mcp is missing: ROMs can be built but not booted from here."
   fi
 
   cat <<EOF
@@ -206,8 +230,11 @@ EOF
 $(msg "n64dev ready")
   source $dir/env.sh
   cd $dir && make -C libdragon/examples/helloworld     # -> .z64; your own game: include \$(N64_INST)/include/n64.mk
-  cd $dir && ./setup.sh --smoke-test                  # build a ROM and boot it, headless
-  cd $dir && ./setup.sh --verify-all                  # all 22 example ROMs + the e2e suite
+
+Nothing was compiled during setup. To prove the toolchain end to end (0.2 s and 2.3 s):
+  cd $dir && ./setup.sh --verify        # build a ROM, link it, check its header
+  cd $dir && ./setup.sh --smoke-test    # ...and boot it headless through ares-mcp
+  cd $dir && ./setup.sh --verify-all    # all 22 example ROMs + the emulator e2e suite
 
 MCP client registration:
   "n64": { "command": "$dir/ares-mcp/bin/ares-mcp", "args": ["mcp"] }
