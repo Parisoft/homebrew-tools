@@ -21,13 +21,26 @@
 # ---- was this file sourced (exports stick) or executed (they cannot)? ----
 _n64_sourced=0
 if [ -n "${BASH_SOURCE:-}" ] && [ "${BASH_SOURCE:-}" != "$0" ]; then _n64_sourced=1; fi
+# Shells without BASH_SOURCE (dash, busybox sh) cannot tell `.` from execution, but
+# there $0 is the *shell*, never this script - so a $0 that is not setup.sh means we
+# are being sourced, and the "your exports died" advice below would be wrong noise.
+if [ "$_n64_sourced" = 0 ] && [ "${0##*/}" != "setup.sh" ]; then _n64_sourced=1; fi
 
 # ---- locate this script's directory (works for both `.` and direct execution) ----
+# Deriving it is preferred, because a stale N64DEV_ROOT in the environment must not
+# point a second checkout at the first one. But shells without BASH_SOURCE (dash, and
+# any plain `sh file`/`. file`) leave $0 as the shell name, and then only an explicit
+# N64DEV_ROOT can find the tree - which is exactly how bootstrap.sh's env.sh works.
 _n64_self="${BASH_SOURCE:-$0}"
 case "$_n64_self" in
-    */*) N64DEV_ROOT=$(cd "${_n64_self%/*}" 2>/dev/null && pwd) ;;
-    *)   N64DEV_ROOT="$PWD" ;;
+    */*) _n64_guess=$(cd "${_n64_self%/*}" 2>/dev/null && pwd) ;;
+    *)   _n64_guess="" ;;
 esac
+if [ -n "$_n64_guess" ] && [ -f "$_n64_guess/libdragon/include/n64.mk" ]; then
+    N64DEV_ROOT="$_n64_guess"
+elif [ ! -f "${N64DEV_ROOT:-}/libdragon/include/n64.mk" ]; then
+    N64DEV_ROOT="${_n64_guess:-$PWD}"
+fi
 if [ -z "$N64DEV_ROOT" ] || [ ! -f "$N64DEV_ROOT/libdragon/include/n64.mk" ]; then
     echo "setup.sh: cannot find the n64dev tree (no libdragon/include/n64.mk)." >&2
     echo "  Run it from the branch root, e.g.:  cd ~/n64dev && . ./setup.sh" >&2
