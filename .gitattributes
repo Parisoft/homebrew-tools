@@ -1,0 +1,16 @@
+# This branch ships a prebuilt SDK and a cross-compiler: never diff or merge them.
+toolchain/** binary -text -merge
+libdragon/** binary -text -merge
+src/** binary -text -merge
+*.a binary
+*.o binary
+*.elf binary
+*.z64 binary
+*.dfs binary
+*.dso binary
+*.sprite binary
+*.xm64 binary
+*.ym64 binary
+*.png binary
+*.jpg binary
+*.gif binary

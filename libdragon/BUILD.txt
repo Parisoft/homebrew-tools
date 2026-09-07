@@ -5,8 +5,9 @@ branch       trunk
 commit       c4a7e119eff1cfad07adcfa892a2910c40d8bdb8
 built        2026-09-07T19:40:49Z (UTC)
 platform     linux x86_64  (Linux 6.1.158+ x86_64)
-toolchain    GCC 16.2.0 / GNU Binutils 2.45 (newlib 4.4.0.20231231), built from source from
-             the same versions libdragon pins in tools/build-toolchain.sh
+toolchain    GCC 16.2.0 / GNU Binutils 2.45 (newlib 4.4.0.20231231), built from source
+             from the same versions libdragon pins in tools/build-toolchain.sh; that
+             compiler is shipped in ../toolchain of this branch (see TOOLCHAIN below)
 build cmd    make -j2 install-mk && make -j2 libdragon && make -j2 tools
              make -j2 install && make -j2 tools-install   (N64_INST=<this folder>)
              make -C examples -j2                          (examples/ lives OUTSIDE
@@ -21,24 +22,68 @@ include/n64.mk      the build system - every libdragon project includes this
 mips64-elf/include/ 68 headers + *.inc + ucode.S + libcart/ + fatfs/
 mips64-elf/lib/     libdragon.a libdragonsys.a n64.ld dso.ld rsp.ld
 
+Verified: with only this folder as N64_INST and ../toolchain as N64_GCCPREFIX,
+`make -C examples -j2` builds 22 ROMs (20 example games, 6 DSOs, 10 DFS images)
+with 0 errors, from outside this tree and outside the libdragon source checkout.
+
 USAGE
 --------------------------------------------------------------------------------
+    . ../setup.sh          # exports N64_INST, N64_GCCPREFIX, PATH; nothing else
+    ./../setup.sh --verify # compiles examples/helloworld into a temp dir
+
+which is these three lines:
+
     export N64_INST=<this folder>
-    export N64_GCCPREFIX=/opt/libdragon      # where mips64-elf-gcc lives
+    export N64_GCCPREFIX=<folder holding bin/mips64-elf-gcc>
     export PATH="$N64_INST/bin:$N64_GCCPREFIX/bin:$PATH"
 
-This folder is a libdragon install tree WITHOUT the cross-compiler: mips64-elf
-GCC is 1.5 GB raw and GitHub caps single files at 100 MB, so it is not shipped
-here. Get it from libdragon's own rolling release, which installs into
-/opt/libdragon:
+This branch ships both halves, so no download or root is needed. On a machine that
+already has libdragon's official toolchain package (the rolling release
+`toolchain-continuous-prerelease`, `gcc-toolchain-mips64-x86_64.deb`, prefix
+/opt/libdragon, which also exports N64_INST itself via /etc/profile.d), setup.sh
+falls back to it when ../toolchain is absent. n64.mk supports the split
+(N64_GCCPREFIX ?= N64_INST), which is what lets a trimmed SDK folder work at all.
 
-    wget https://github.com/DragonMinded/libdragon/releases/download/\
-toolchain-continuous-prerelease/gcc-toolchain-mips64-x86_64.deb
-    sudo dpkg -i gcc-toolchain-mips64-x86_64.deb
+TOOLCHAIN (../toolchain)
+--------------------------------------------------------------------------------
+Same prefix tree as a GCC install, trimmed 1.6 GB -> 162 MB (1229 files, largest
+file 33 MB, so it stays under GitHub's 100 MB per-file cap) with these steps:
 
-That deb also exports N64_INST=/opt/libdragon itself, so with the deb alone you
-need no environment at all - setting N64_GCCPREFIX is only needed because the SDK
-here is a separate folder. n64.mk supports the split (N64_GCCPREFIX ?= N64_INST).
+    rm -rf share include lib/libcc1.so* lib/bfd-plugins bin/mips64-elf-lto-dump
+    rm -rf lib/gcc/mips64-elf/16.2.0/{plugin,install-tools}
+    # unused multilibs: libdragon always selects the default one
+    # (mips64-elf-gcc -print-multi-directory -march=vr4300 -mabi=o64 == ".")
+    rm -rf mips64-elf/lib/{el,soft-float} lib/gcc/mips64-elf/16.2.0/{el,soft-float}
+    find . -name '*.la' -delete; find . -name '*-gdb.py' -delete
+    # host executables: no debug info needed
+    find bin libexec mips64-elf/bin -type f -perm -u+x -exec strip -s {} +
+    # target archives: strip --strip-debug with OUR strip, not the host one
+    find mips64-elf/lib lib/gcc -type f \( -name '*.a' -o -name '*.o' \) \
+         -exec ./bin/mips64-elf-strip --strip-debug {} +
 
-Alternatively drop this tree on top of the deb's prefix and keep using the
-defaults:  sudo cp -a <this folder>/. /opt/libdragon/
+Notes for anyone re-running that:
+  * `mips64-elf/bin/` (as, ld, ar, objcopy, …) must stay: GCC searches
+    <prefix>/mips64-elf/bin for the assembler/linker, and if it is missing it silently
+    falls back to the host binutils - the failure looks like
+    `as: unrecognized option '-EB'`, not like a missing file.
+  * libc.a and libg.a are hardlinks in a fresh install; stripping them in place
+    through the shared inode truncates the archive. Break the links first, or strip
+    one and `cp` it over the other.
+  * The host `strip` in Debian-derived images cannot read MIPS objects (it reports
+    "Unable to recognise the format" and changes nothing); use mips64-elf-strip.
+  * Verification after trimming: rebuild the whole example matrix and compare the
+    code, not the file - `mips64-elf-objcopy -O binary --only-section=.text
+    examples/helloworld/build/helloworld.elf /dev/stdout | sha256sum` must be
+    unchanged vs the untrimmed compiler (it was: 944c6a28ffff90aa..., and the .z64
+    files themselves only differ by the build directory recorded in their debug info).
+  * Dropped: gdb, gprof, gcov host helpers, docs, locales, C++ for the non-default
+    multilibs. Kept: C and C++ (examples/cpptest needs libstdc++), libgcov.a,
+    LTO (lto1 stripped; lto-dump, a debug utility, removed).
+
+EXAMPLES
+--------------------------------------------------------------------------------
+examples/ is upstream's examples/ verbatim except that ../src holds the two private
+headers (xm.h, xm_internal.h) that examples/audioplayer.c includes by relative path.
+Upstream expects examples/ to sit inside a libdragon checkout; to keep the branch
+small only those headers were added rather than the whole src/ tree, so the example
+matrix builds 22/22 with no symlinks or skips.
