@@ -119,13 +119,23 @@ without touching your sources.
 
 ### Get the tools
 
+From a checkout of `main`, one command does the whole thing — it shallow-clones the
+branch into `n64dev/`, makes the binaries executable, writes `n64dev/env.sh` next to
+the checkout, then *proves* the result by building `examples/helloworld` and booting
+that ROM in the emulator (~7 s end to end; `git` and the network are all it needs):
+
+```bash
+./bootstrap.sh n64dev
+```
+
+By hand it is the same two lines the script runs, and just as complete — the checkout
+**is** the installation, so nothing has to be installed:
+
 ```bash
 git clone --depth 1 --single-branch --branch n64dev \
     https://github.com/Parisoft/homebrew-tools.git n64dev
-cd n64dev && . ./setup.sh
+cd n64dev && . ./setup.sh        # or: . ./n64dev/env.sh, from anywhere
 ```
-
-That is the whole setup: one shallow clone, one script, nothing to install.
 
 ```
 n64dev/
@@ -145,7 +155,7 @@ An agent's tool calls usually each start a fresh process, and the previous `expo
 die with their shell, so the pattern that works is to prefix build commands:
 
 ```bash
-cd ~/n64dev && . ./setup.sh && make -C examples/rdpqdemo
+cd ~/n64dev && . ./setup.sh && make -C libdragon/examples/rdpqdemo
 ```
 
 ```bash
@@ -162,7 +172,7 @@ own install uses:
 | Variable | Meaning |
 |---|---|
 | `N64_INST` | **Required.** Root of the libdragon install. `n64.mk` is read from `$(N64_INST)/include/n64.mk`, headers from `$(N64_INST)/mips64-elf/include`, libraries from `$(N64_INST)/mips64-elf/lib`, asset tools from `$(N64_INST)/bin`. |
-| `N64_GCCPREFIX` | Root holding `bin/mips64-elf-*`. Defaults to `N64_INST`; on this branch it is set to `toolchain/`, which is what lets the SDK stay a separate folder. |
+| `N64_GCCPREFIX` | Root holding `bin/mips64-elf-*`. Defaults to `N64_INST`; on this branch it is `libdragon/toolchain/`, i.e. the compiler sits inside the SDK folder as a sibling of `include/` and `bin/`, which is what lets one clone carry both. |
 | `N64_TARGET` | Triplet of the cross toolchain, `mips64-elf`. Keep the **64-bit** one — libdragon's point is the `o64` ABI (full 64-bit R4300 registers), which the old 32-bit `mips-elf` toolchains cannot emit. |
 
 On a machine that already has libdragon's official rolling toolchain package —
@@ -198,20 +208,20 @@ Measured in a 2-core sandbox, cold: clone 6 s, setup 0.003 s, one ROM 0.2 s, all
 
 ```console
 $ . ./setup.sh
-$ make -C examples helloworld
+$ make -C libdragon/examples helloworld
 Using N64_INST=/home/me/n64dev/libdragon
     [CC] src/main.c
     [LD] build/helloworld.elf
       text       data        bss      total filename
     145240      41996       3688     190924 build/helloworld.elf
     [Z64] helloworld.z64
-$ od -An -tx1 -N8 examples/helloworld/helloworld.z64
+$ od -An -tx1 -N8 libdragon/examples/helloworld/helloworld.z64
  80 37 12 40 00 00 00 00          # PI boot CIC word + zero reset: a real N64 ROM
 ```
 
 A game is a Makefile that includes `n64.mk` plus its sources — do not hand-roll
 rules, they are the part libdragon changes between releases (this is
-`examples/helloworld/Makefile` with the comments removed):
+`libdragon/examples/helloworld/Makefile` with the comments removed):
 
 ```makefile
 ROMNAME := mygame
@@ -293,27 +303,33 @@ tree, which proves nothing about the install; instead copy the folder out and
 compile it against the installed SDK only:
 
 ```bash
-mkdir -p <test> && cp -a examples <test>/examples
+mkdir -p <test> && cp -a <libdragon-src>/examples <test>/examples
 make -C <test>/examples -j"$(nproc)"     # expect 22 .z64, 6 .dso, 10 .dfs, 0 errors
 ```
 
 `audioplayer` is the single example that reaches into libdragon's private headers
 (`../../src/audio/libxm/xm_internal.h`); the branch keeps just those two headers in
-`src/`, so the matrix is 22/22 with no symlinks and no skips. Then ship only what
-survived — `include/`, `bin/`, `mips64-elf/` of `<install-prefix>` — plus a trimmed
-copy of the compiler, on an orphan branch:
+`libdragon/src/`, so the matrix is 22/22 with no symlinks and no skips. Then ship only
+what survived — `include/`, `bin/`, `mips64-elf/` of `<install-prefix>` — plus a
+trimmed copy of the compiler, all under `libdragon/`, on an orphan branch:
 
 ```bash
 git checkout --orphan n64dev && git rm -rf .
-cp -a <install-prefix> libdragon && cp -a <test>/examples examples
-cp -a <toolchain-prefix> toolchain && cd toolchain
+cp -a <install-prefix> libdragon && cp -a <test>/examples libdragon/examples
+mkdir -p libdragon/src/audio/libxm
+cp <libdragon-src>/src/audio/libxm/{xm.h,xm_internal.h} libdragon/src/audio/libxm/
+cp -a <toolchain-prefix> libdragon/toolchain && cd libdragon/toolchain
 rm -rf share include lib/libcc1.so* lib/bfd-plugins bin/mips64-elf-lto-dump \
        lib/gcc/mips64-elf/*/plugin lib/gcc/mips64-elf/*/install-tools
 rm -rf mips64-elf/lib/{el,soft-float} lib/gcc/mips64-elf/*/el lib/gcc/mips64-elf/*/soft-float
 find bin libexec mips64-elf/bin -type f -perm -u+x -exec strip -s {} +
 find mips64-elf/lib lib/gcc -type f \( -name '*.a' -o -name '*.o' \) \
      -exec ./bin/mips64-elf-strip --strip-debug {} +      # 1.6 GB -> 162 MB
-cd .. && git add -A && git commit -m "n64dev: prebuilt libdragon SDK" && git push -f origin n64dev
+cd ../..
+# -f is not decorative: a root .gitignore containing *.o silently dropped
+# libdragon/toolchain/lib/gcc/.../crt*.o from the first commit, and only the file
+# count revealed it - those objects are what every link needs.
+git add -f -A . && git commit -m "n64dev: prebuilt libdragon SDK" && git push -f origin n64dev
 ```
 
 Three traps in that trim, all of them hit while doing it (they are recorded with more

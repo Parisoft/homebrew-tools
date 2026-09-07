@@ -4,13 +4,14 @@
 #
 # Usage:
 #   ./bootstrap.sh nesdev              # NES/SNES dev tools (cc65 + mesen-mcp)
+#   ./bootstrap.sh n64dev              # N64 dev tools (libdragon + mips64-elf GCC + ares-mcp)
 #   ./bootstrap.sh mame <system>       # headless MAME + MCP server for <system>
 #
 #   <system> is one of: konami capcom sega taito tecmo technos
 #
 # Each target is fetched as a shallow (--depth 1) single-branch clone of the
 # matching orphan branch of this repository, into a directory named after the
-# branch (nesdev/ or mame-<system>/), and then set up per the README.
+# branch (nesdev/, n64dev/ or mame-<system>/), and then set up per the README.
 #
 # After a successful run an env file is written next to the checkout:
 #   <dir>/env.sh   ->   source it to put the tools on PATH.
@@ -27,7 +28,7 @@ warn() { printf '\033[1;33m  !\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
 usage() {
-  sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
@@ -156,9 +157,70 @@ Note: ROMs are never distributed with this repo — point MAME_ROMPATH at your o
 EOF
 }
 
+# ---------------------------------------------------------------- n64dev ----
+setup_n64dev() {
+  need git
+  local dir="$BASE_DIR/n64dev"
+  clone_branch n64dev "$dir"
+
+  [ -f "$dir/libdragon/include/n64.mk" ] || die "libdragon/include/n64.mk missing from the n64dev checkout."
+  [ -x "$dir/libdragon/toolchain/bin/mips64-elf-gcc" ] \
+    || die "libdragon/toolchain is missing (a pruned/partial checkout): rm -rf '$dir' and re-run."
+
+  msg "Making binaries executable"
+  chmod +x "$dir/setup.sh"
+  chmod +x "$dir"/libdragon/bin/* "$dir"/libdragon/toolchain/bin/* 2>/dev/null || true
+  [ -f "$dir/ares-mcp/bin/ares-mcp" ] && chmod +x "$dir/ares-mcp/bin/ares-mcp"
+  ok "$(ls -1 "$dir/libdragon/bin" | wc -l) host tools, gcc for $("$dir"/libdragon/toolchain/bin/mips64-elf-gcc -dumpmachine)"
+
+  # The checkout carries its own environment script (it knows where libdragon/,
+  # toolchain/ and ares-mcp/ sit, and falls back to /opt/libdragon); env.sh only pins
+  # N64DEV_ROOT so that `source env.sh` also works from another directory and in
+  # shells without BASH_SOURCE.
+  cat > "$dir/env.sh" <<EOF
+# source this file to use the n64dev tools
+export N64DEV_ROOT="$dir"
+. "\$N64DEV_ROOT/setup.sh"
+EOF
+  ok "wrote $dir/env.sh"
+
+  msg "Verifying the compiler by building examples/helloworld"
+  "$dir/setup.sh" --verify || die "setup.sh --verify failed; see libdragon/BUILD.txt for the tree layout."
+
+  if [ -x "$dir/ares-mcp/bin/ares-mcp" ] && command -v python3 >/dev/null 2>&1; then
+    msg "Verifying the emulator by booting that ROM over MCP (headless)"
+    local out
+    if out=$("$dir/setup.sh" --smoke-test 2>&1); then
+      printf '%s\n' "$out" | grep -E '^BOOT OK:' || true
+      ok "ares-mcp booted the ROM"
+    else
+      warn "the emulator check failed; the compiler works, so builds are unaffected:"
+      printf '%s\n' "$out" | tail -5 >&2
+    fi
+  else
+    warn "skipped the emulator check (no ares-mcp binary or no python3)."
+  fi
+
+  cat <<EOF
+
+$(msg "n64dev ready")
+  source $dir/env.sh
+  cd $dir && make -C libdragon/examples/helloworld     # -> .z64; your own game: include \$(N64_INST)/include/n64.mk
+  cd $dir && ./setup.sh --smoke-test                  # build a ROM and boot it, headless
+  cd $dir && ./setup.sh --verify-all                  # all 22 example ROMs + the e2e suite
+
+MCP client registration:
+  "n64": { "command": "$dir/ares-mcp/bin/ares-mcp", "args": ["mcp"] }
+
+Note: screenshots of RDP-drawn scenes need a Vulkan driver and an ares build with
+paraLLEl-RDP (see ares-mcp/BUILD.txt); emulation, input, audio, log and GDB work without.
+EOF
+}
+
 # ------------------------------------------------------------------ main ----
 case "${1:-}" in
   nesdev)        setup_nesdev ;;
+  n64dev)        setup_n64dev ;;
   mame)          setup_mame "${2:-}" ;;
   -h|--help|"")  usage 0 ;;
   *)             die "unknown option '$1' (try --help)" ;;
