@@ -149,12 +149,10 @@ case "${1:-}" in
     if python3 "$N64DEV_ROOT/ares-mcp/test/boot_check.py" --rom "$ROM" --bin "$N64_MCP" \
             --frames "${N64_SMOKE_FRAMES:-120}" --timeout "${N64_SMOKE_TIMEOUT:-25}" \
             >"$_n64_tmp/boot.log" 2>&1; then
+        # no log grep here on purpose: boot_check.py already scans n64_log for
+        # exception/crash/assert and exits 3 if it finds one (grepping its report
+        # would match its own "no exceptions in the log" line)
         grep -E "^BOOT OK:" "$_n64_tmp/boot.log"
-        if grep -qiE "exception|crash|assertion failed" "$_n64_tmp/boot.log"; then
-            echo "setup.sh: the ROM ran but the log mentions an exception/crash:" >&2
-            grep -iE "exception|crash|assertion failed" "$_n64_tmp/boot.log" | head -5 >&2
-            rm -rf "$_n64_tmp"; return 1 2>/dev/null || exit 1
-        fi
         echo "n64dev smoke OK - the ROM booted and emulated ${N64_SMOKE_FRAMES:-120} frames"
         echo "  note: RDP-rendered pixels need a Vulkan driver (none here): use"
         echo "  n64_log/n64_status/exceptions for checks, or run ares with --gpu on a"
