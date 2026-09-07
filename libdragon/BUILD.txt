@@ -7,13 +7,14 @@ built        2026-09-07T19:40:49Z (UTC)
 platform     linux x86_64  (Linux 6.1.158+ x86_64)
 toolchain    GCC 16.2.0 / GNU Binutils 2.45 (newlib 4.4.0.20231231), built from source
              from the same versions libdragon pins in tools/build-toolchain.sh; that
-             compiler is shipped in ../toolchain of this branch (see TOOLCHAIN below)
+             compiler is shipped in this folder as toolchain/ (see TOOLCHAIN below)
 build cmd    make -j2 install-mk && make -j2 libdragon && make -j2 tools
              make -j2 install && make -j2 tools-install   (N64_INST=<this folder>)
-             make -C examples -j2                          (examples/ lives OUTSIDE
-             this folder - that is the install test)
+             make -C examples -j2                          (examples/ was copied OUT
+             of the libdragon checkout for the install test, then parked in this
+             folder; it sees nothing but N64_INST, exactly like a real game)
 
-Layout
+Layout (this folder IS $N64_INST, like the /opt/libdragon of libdragon's deb)
 --------------------------------------------------------------------------------
 bin/                13 host tools: n64tool n64sym n64elfcompress ed64romconfig
                     audioconv64 mkdfs dumpdfs mkasset mksprite mkfont n64dso
@@ -21,15 +22,17 @@ bin/                13 host tools: n64tool n64sym n64elfcompress ed64romconfig
 include/n64.mk      the build system - every libdragon project includes this
 mips64-elf/include/ 68 headers + *.inc + ucode.S + libcart/ + fatfs/
 mips64-elf/lib/     libdragon.a libdragonsys.a n64.ld dso.ld rsp.ld
+toolchain/          the mips64-elf cross-compiler (see TOOLCHAIN)
+examples/           upstream example games, and src/ the two headers they need
 
-Verified: with only this folder as N64_INST and ../toolchain as N64_GCCPREFIX,
+Verified: with only this folder as N64_INST and toolchain/ as N64_GCCPREFIX,
 `make -C examples -j2` builds 22 ROMs (20 example games, 6 DSOs, 10 DFS images)
 with 0 errors, from outside this tree and outside the libdragon source checkout.
 
 USAGE
 --------------------------------------------------------------------------------
     . ../setup.sh          # exports N64_INST, N64_GCCPREFIX, PATH; nothing else
-    ./../setup.sh --verify # compiles examples/helloworld into a temp dir
+    ../setup.sh --verify   # compiles libdragon/examples/helloworld into a temp dir
 
 which is these three lines:
 
@@ -37,14 +40,15 @@ which is these three lines:
     export N64_GCCPREFIX=<folder holding bin/mips64-elf-gcc>
     export PATH="$N64_INST/bin:$N64_GCCPREFIX/bin:$PATH"
 
-This branch ships both halves, so no download or root is needed. On a machine that
+setup.sh finds the compiler at $N64_INST/toolchain and the emulator at
+../../ares-mcp/bin/ares-mcp, so no download or root is needed. On a machine that
 already has libdragon's official toolchain package (the rolling release
 `toolchain-continuous-prerelease`, `gcc-toolchain-mips64-x86_64.deb`, prefix
 /opt/libdragon, which also exports N64_INST itself via /etc/profile.d), setup.sh
 falls back to it when ../toolchain is absent. n64.mk supports the split
 (N64_GCCPREFIX ?= N64_INST), which is what lets a trimmed SDK folder work at all.
 
-TOOLCHAIN (../toolchain)
+TOOLCHAIN (toolchain/)
 --------------------------------------------------------------------------------
 Same prefix tree as a GCC install, trimmed 1.6 GB -> 162 MB (1229 files, largest
 file 33 MB, so it stays under GitHub's 100 MB per-file cap) with these steps:
@@ -82,8 +86,10 @@ Notes for anyone re-running that:
 
 EXAMPLES
 --------------------------------------------------------------------------------
-examples/ is upstream's examples/ verbatim except that ../src holds the two private
-headers (xm.h, xm_internal.h) that examples/audioplayer.c includes by relative path.
+examples/ is upstream's examples/ verbatim; src/ holds the two private headers
+(xm.h, xm_internal.h) that examples/audioplayer.c includes as
+"../../src/audio/libxm/xm_internal.h" - the path works because examples/ and src/ sit
+inside this folder, exactly as they do inside a libdragon checkout.
 Upstream expects examples/ to sit inside a libdragon checkout; to keep the branch
 small only those headers were added rather than the whole src/ tree, so the example
 matrix builds 22/22 with no symlinks or skips.

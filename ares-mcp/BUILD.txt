@@ -1,0 +1,83 @@
+ares-mcp 69ecdb6 (fork of ares, headless N64 MCP server)
+================================================================================
+source       https://github.com/Parisoft/ares-mcp
+branch       master
+commit       69ecdb6a5 "Merge pull request #1 from Parisoft/arena/01a03f7c-ares-mcp"
+built        2026-09-07 (UTC), linux x86_64
+compiler     g++ (Debian 12.2.0-14+deb12u1) 12.2.0, -DCMAKE_BUILD_TYPE=Release
+build tools  cmake 4.4.3 and ninja 1.13.2, both from PyPI wheels
+             (pip install --break-system-packages cmake ninja) - the image has
+             neither, and no root to apt-get them
+
+Build (upstream's documented MCP-only build; no GUI, no SDL, no X server)
+--------------------------------------------------------------------------------
+    git clone https://github.com/Parisoft/ares-mcp && cd ares-mcp
+    cmake -B build -G Ninja -DARES_BUILD_MCP=ON -DCMAKE_BUILD_TYPE=Release
+    ninja -C build mcp -j2                       # 98 targets, ~5 min on 2 cores
+    # -> build/rundir/bin/ares-mcp (6.9 MB), plus a sourcery resource compiler that
+    #    is not needed by the MCP host
+    strip -s build/rundir/bin/ares-mcp            # 6.9 MB -> 6.0 MB
+
+The MCP option forces ARES_SKIP_DEPS=ON, ARES_CORES=n64 and ARES_ENABLE_CHD=OFF, so
+nothing from ares-deps is downloaded and hiro/ruby/desktop-ui are not built. That is
+what makes this buildable in a sandbox that can only reach github.com (the repo is
+fully vendored: nall, libco, mia, thirdparty) and has no package manager.
+
+Runtime dependencies (ldd): libstdc++, libm, libgcc_s, libc. Nothing else: no SDL, no
+X11, no Vulkan loader. So the binary is portable across distros and needs no install.
+
+What is shipped here
+--------------------------------------------------------------------------------
+bin/ares-mcp      the stripped binary above
+test/             upstream's e2e suite, adapted for this layout:
+                  mcp_client.py    drives the MCP server over stdio and asserts 27
+                                   checks (handshake, 10 tools, load, run, screenshot
+                                   content, input round-trips, log, status, error
+                                   paths, clean shutdown); also a general ROM driver:
+                                     python3 test/mcp_client.py --rom game.z64 --no-check
+                  make_green_rom.py / make_boot_rom.py / ipl3_seed.bin
+                  green.z64        the generated 4 MiB test ROM. Upstream does not
+                                   commit test ROMs; it is checked in here so the
+                                   self-test is one command with no codegen step
+                                   (regenerate: python3 test/mcp/../make_green_rom.py
+                                   - it writes green.z64 to the CURRENT directory,
+                                   so move it into test/ afterwards)
+
+Only local change vs upstream: mcp_client.py's --rom/--bin defaults were pointed at
+this folder (../bin/ares-mcp, honouring $N64_MCP from the branch's setup.sh) instead
+of <repo>/build/rundir/bin. No other edit.
+
+Verification performed on this build
+--------------------------------------------------------------------------------
+    $ python3 ares-mcp/test/mcp_client.py
+      ... 27 x "ok" ...
+      ALL OK - MCP end-to-end test passed
+    $ python3 ares-mcp/test/mcp_client.py --rom <helloworld.z64 built by this branch> --no-check
+      load: Loaded 'helloworld' [NTSC,PAL,MPAL] ...
+      run:  Ran 120 frames (total 120) ...
+    speed: 300 frames of the audioplayer ROM in 5.9 s wall clock (~50 fps emulated,
+    software RDP off, recompiler on)
+
+Known limitation - RDP pixels need a GPU
+--------------------------------------------------------------------------------
+paraLLEl-RDP (ares' RDP renderer) comes from the prebuilt ares-deps payload, which
+lives on GitHub *release assets* (deps.json: ares-emulator/ares-deps/releases/...).
+Those are unreachable from sandboxes whose egress is limited to github.com, so this
+binary has no RDP renderer compiled in: it reports
+
+    Vulkan init failed: No RDP rendering support
+
+when passed --gpu. Consequence: framebuffer content that the RDP produced is blank in
+screenshots (the VI still scans out CPU-written pixels, which is why green.z64's
+checks pass and why this is still a useful signal). Emulation itself - CPU/RSP/timers,
+input, audio capture, save states, GDB remote, exceptions in the log - is complete.
+To get RDP pixels, build upstream with deps available and run with --gpu on a host
+with a Vulkan driver; nothing about this branch's ROM-building flow changes.
+
+USAGE
+--------------------------------------------------------------------------------
+    . ../../setup.sh                       # exports N64_MCP and puts it on PATH
+    ares-mcp run --rom mygame.z64 --homebrew --frames 600 --screenshot shot.png
+    ares-mcp mcp                           # JSON-RPC 2.0 over stdio (see ../../AGENTS.md)
+--homebrew enables ares' emux extensions (what libdragon ROMs expect); --deterministic
+makes the run reproducible; --gdb-port 20000 exposes the core's GDB server.

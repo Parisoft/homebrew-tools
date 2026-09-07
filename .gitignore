@@ -1,0 +1,8 @@
+# Build output of the examples or of your own project, so `git status` stays clean
+# after compiling. Scoped to avoid the shipped toolchain: it carries crt*.o
+# (crti.o, crtbegin.o, ...) and a linker script, which a blanket `*.o` would
+# silently exclude from the branch.
+**/build/
+**/*.d
+**/*.map
+**/*.syms
