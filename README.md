@@ -103,8 +103,8 @@ cross-compiler**, and a **headless N64 emulator that speaks MCP** — all for
 | `ares-mcp/` | **Headless [ares](https://github.com/ares-emulator/ares) N64 core** behind an [MCP](https://modelcontextprotocol.io) server: `n64_load` `n64_run` `n64_input` `n64_screenshot` `n64_log` `n64_status` `n64_record` `n64_pause` `n64_resume` `n64_stop` over JSON-RPC on stdio, plus a `run` CLI for one-shot boots, a GDB remote server, and PNG/WAV capture. Ships upstream's 27-check e2e client, its generated `green.z64` control ROM, and `boot_check.py` (one `BOOT OK`/`BOOT FAIL` line, distinct exit codes, bounded reads so it cannot hang an automation). | Parisoft/ares-mcp `69ecdb6` |
 | `setup.sh`, `AGENTS.md` | `. ./setup.sh` exports the environment for both halves (incl. `N64_MCP`); `--verify` compiles a ROM, `--smoke-test` boots it in the emulator, `--verify-all` runs the whole example matrix *and* the emulator's e2e suite. `AGENTS.md` is the operational checklist for agents in resetting sandboxes. | |
 
-Nothing else is kept — no libdragon sources, objects, docs or tests: 1536 files,
-201 MB, and a shallow clone transfers ~57 MiB in ~5 s. Each folder carries its own
+Nothing else is kept — no libdragon sources, objects, docs or tests: 1537 files,
+197 MB checked out, 57.65 MiB over the wire in 4–5 s (`--depth 1 --single-branch`). Each folder carries its own
 `BUILD.txt` recording the source commit, the compilers, the exact commands and the
 verification results — including the cross-compiler's 1.6 GB → 162 MB trimming recipe
 and its traps, and why the emulator's RDP renderer is absent here.
