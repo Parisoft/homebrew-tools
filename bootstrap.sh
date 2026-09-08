@@ -4,13 +4,14 @@
 #
 # Usage:
 #   ./bootstrap.sh nesdev              # NES/SNES dev tools (cc65 + mesen-mcp)
+#   ./bootstrap.sh n64dev              # N64 dev tools (libdragon + mips64-elf GCC + ares-mcp)
 #   ./bootstrap.sh mame <system>       # headless MAME + MCP server for <system>
 #
 #   <system> is one of: konami capcom sega taito tecmo technos
 #
 # Each target is fetched as a shallow (--depth 1) single-branch clone of the
 # matching orphan branch of this repository, into a directory named after the
-# branch (nesdev/ or mame-<system>/), and then set up per the README.
+# branch (nesdev/, n64dev/ or mame-<system>/), and then set up per the README.
 #
 # After a successful run an env file is written next to the checkout:
 #   <dir>/env.sh   ->   source it to put the tools on PATH.
@@ -27,7 +28,7 @@ warn() { printf '\033[1;33m  !\033[0m %s\n' "$*" >&2; }
 die()  { printf '\033[1;31merror:\033[0m %s\n' "$*" >&2; exit 1; }
 
 usage() {
-  sed -n '2,16p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
+  sed -n '2,18p' "${BASH_SOURCE[0]}" | sed 's/^# \{0,1\}//'
   exit "${1:-0}"
 }
 
@@ -156,9 +157,97 @@ Note: ROMs are never distributed with this repo — point MAME_ROMPATH at your o
 EOF
 }
 
+# ---------------------------------------------------------------- n64dev ----
+# The branch carries everything (SDK, cross-compiler, emulator), so there is nothing to
+# build or download here: the target unpacks the checkout, makes it runnable and checks
+# that it is COMPLETE. It deliberately compiles no ROM - that is `./setup.sh --verify`,
+# which the user (or a project's CI) runs on purpose.
+setup_n64dev() {
+  need git
+  local dir="$BASE_DIR/n64dev"
+  clone_branch n64dev "$dir"
+
+  msg "Making the shipped binaries executable"
+  chmod +x "$dir/setup.sh"
+  chmod +x "$dir"/libdragon/bin/* "$dir"/libdragon/toolchain/bin/* 2>/dev/null || true
+  [ -f "$dir/ares-mcp/bin/ares-mcp" ] && chmod +x "$dir/ares-mcp/bin/ares-mcp"
+  ok "$(ls -1 "$dir/libdragon/bin" | wc -l) host tools, $(ls -1 "$dir"/libdragon/toolchain/bin/mips64-elf-* 2>/dev/null | wc -l) compiler and linker binaries"
+
+  # env.sh defers to the branch's own setup.sh, which owns the paths (and the
+  # /opt/libdragon fallback). N64DEV_ROOT is pinned so `source env.sh` also works from
+  # another directory and in shells that have no BASH_SOURCE.
+  cat > "$dir/env.sh" <<EOF
+# source this file to use the n64dev tools
+export N64DEV_ROOT="$dir"
+. "\$N64DEV_ROOT/setup.sh"
+EOF
+  ok "wrote $dir/env.sh"
+
+  msg "Checking that the checkout is complete"
+  # Not paranoia: while packing this branch a root .gitignore containing *.o silently
+  # dropped the toolchain's crt*.o, and a partial tree still *looks* fine until the
+  # first link. Catching it here costs one ls, not a debugging session.
+  local f
+  for f in libdragon/include/n64.mk \
+           libdragon/mips64-elf/lib/libdragon.a \
+           libdragon/mips64-elf/lib/libdragonsys.a \
+           libdragon/mips64-elf/lib/n64.ld \
+           libdragon/toolchain/bin/mips64-elf-gcc; do
+    [ -e "$dir/$f" ] || die "$f is missing: the clone is partial - rm -rf '$dir' and re-run."
+  done
+  # "some crt*.o are there" is not enough - one missing file is already a link error,
+  # and they live in a version-directory, so check each one by name through a glob.
+  local o
+  for o in crti.o crtn.o crtbegin.o crtend.o libgcc.a; do
+    compgen -G "$dir/libdragon/toolchain/lib/gcc/*/*/$o" >/dev/null \
+      || die "$o is missing from the toolchain: nothing would link (a root .gitignore with *.o did this once)."
+  done
+  ok "n64.mk, libdragon.a, libdragonsys.a, n64.ld, and crti/crtn/crtbegin/crtend + libgcc.a"
+
+  msg "Checking that the binaries run"
+  # This is a prebuilt linux x86_64 tree, so "it executes" is the real risk, not
+  # "it is misconfigured"; --version is the cheapest proof for each side of the SDK.
+  local t v
+  for t in mips64-elf-gcc mips64-elf-ld; do
+    if v=$("$dir"/libdragon/toolchain/bin/"$t" --version 2>&1 | head -1); then
+      printf '  %-15s %s\n' "$t" "$v"
+    else
+      die "$t did not run - this branch ships linux x86_64 binaries [${v:-no output}]"
+    fi
+  done
+  if [ -x "$dir/ares-mcp/bin/ares-mcp" ]; then
+    if "$dir/ares-mcp/bin/ares-mcp" --help >/dev/null 2>&1; then
+      ok "ares-mcp runs headless"
+    else
+      warn "ares-mcp --help returned non-zero (it is an stdio MCP server; this may be fine)"
+    fi
+  else
+    warn "ares-mcp/bin/ares-mcp is missing: ROMs can be built but not booted from here."
+  fi
+
+  cat <<EOF
+
+$(msg "n64dev ready")
+  source $dir/env.sh
+  cd $dir && make -C libdragon/examples/helloworld     # -> .z64; your own game: include \$(N64_INST)/include/n64.mk
+
+Nothing was compiled during setup. To prove the toolchain end to end (0.2 s and 2.3 s):
+  cd $dir && ./setup.sh --verify        # build a ROM, link it, check its header
+  cd $dir && ./setup.sh --smoke-test    # ...and boot it headless through ares-mcp
+  cd $dir && ./setup.sh --verify-all    # all 22 example ROMs + the emulator e2e suite
+
+MCP client registration:
+  "n64": { "command": "$dir/ares-mcp/bin/ares-mcp", "args": ["mcp"] }
+
+Note: screenshots of RDP-drawn scenes need a Vulkan driver and an ares build with
+paraLLEl-RDP (see ares-mcp/BUILD.txt); emulation, input, audio, log and GDB work without.
+EOF
+}
+
 # ------------------------------------------------------------------ main ----
 case "${1:-}" in
   nesdev)        setup_nesdev ;;
+  n64dev)        setup_n64dev ;;
   mame)          setup_mame "${2:-}" ;;
   -h|--help|"")  usage 0 ;;
   *)             die "unknown option '$1' (try --help)" ;;

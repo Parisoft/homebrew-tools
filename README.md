@@ -87,10 +87,281 @@ an agent, register it as an MCP server (Claude Desktop / Cursor / any stdio host
 settings, battery RAM, savestates and captures between runs; firmware files (e.g.
 GBA's `gba_bios.bin`) go in `<home>/Firmware/`. One ROM per process — `load_rom`
 replaces the current one.
-Build artifacts and tooling for arcade ROM **disassembly** and **porting to new
-systems**, driven by AI agents.
+
+## N64 development tools — the `n64dev` branch
+
+Agents (and humans) looking for everything needed to build **Nintendo 64 homebrew
+games** can find it on the **`n64dev` branch** of this repository. It is an *orphan
+branch* — no shared history with `main` — carrying a prebuilt
+[libdragon](https://github.com/DragonMinded/libdragon) SDK, its **mips64-elf
+cross-compiler**, and a **headless N64 emulator that speaks MCP** — all for
+**linux x86_64**, so that checking the branch out is the entire installation:
+
+| Path on `n64dev` | What it is | Version |
+| --- | --- | --- |
+| `libdragon/` | **The whole toolchain side, and the folder *is* `$N64_INST`** (like `/opt/libdragon` from upstream's package): `include/n64.mk` (which is the build system), 68 public headers plus `libcart/`, `fatfs/`, the RSP `*.inc` files and `ucode.S`, `mips64-elf/lib/{libdragon.a,libdragonsys.a,n64.ld,dso.ld,rsp.ld}`, and the 13 host tools in `bin/` (`n64tool`, `n64sym`, `n64elfcompress`, `ed64romconfig`, `audioconv64`, `mkdfs`, `dumpdfs`, `mkasset`, `mksprite`, `mkfont`, `n64dso`, `n64dso-extern`, `n64dso-msym`). Inside it: `toolchain/` (mips64-elf GCC 16.2.0 + binutils 2.45 + newlib 4.4.0, trimmed 1.6 GB → 162 MB, no file over 33 MB), `examples/` (upstream games, parked outside the SDK's own tree so compiling them **is** the install test: 22 ROMs, zero errors) and `src/audio/libxm/` (the 2 private headers `examples/audioplayer` includes). | libdragon **trunk** `c4a7e11` |
+| `ares-mcp/` | **Headless [ares](https://github.com/ares-emulator/ares) N64 core** behind an [MCP](https://modelcontextprotocol.io) server: `n64_load` `n64_run` `n64_input` `n64_screenshot` `n64_log` `n64_status` `n64_record` `n64_pause` `n64_resume` `n64_stop` over JSON-RPC on stdio, plus a `run` CLI for one-shot boots, a GDB remote server, and PNG/WAV capture. Ships upstream's 27-check e2e client, its generated `green.z64` control ROM, and `boot_check.py` (one `BOOT OK`/`BOOT FAIL` line, distinct exit codes, bounded reads so it cannot hang an automation). | Parisoft/ares-mcp `69ecdb6` |
+| `setup.sh`, `AGENTS.md` | `. ./setup.sh` exports the environment for both halves (incl. `N64_MCP`); `--verify` compiles a ROM, `--smoke-test` boots it in the emulator, `--verify-all` runs the whole example matrix *and* the emulator's e2e suite. `AGENTS.md` is the operational checklist for agents in resetting sandboxes. | |
+
+Nothing else is kept — no libdragon sources, objects, docs or tests: 1537 files,
+197 MB checked out, 57.65 MiB over the wire in 4–5 s (`--depth 1 --single-branch`). Each folder carries its own
+`BUILD.txt` recording the source commit, the compilers, the exact commands and the
+verification results — including the cross-compiler's 1.6 GB → 162 MB trimming recipe
+and its traps, and why the emulator's RDP renderer is absent here.
+
+What libdragon brings to a game: RDPQ accelerated 2D (sprites of arbitrary size and
+pixel format, a text engine, custom color combiner and blender), an RSP audio mixer
+with WAV / VADPCM / XM / YM / Opus playback, an in-ROM asset filesystem
+(`fopen("rom://asset.dat")`), transparent asset compression, `dlopen()`-based DSO
+overlays, symbolized crash screens, `debugf()` streamed to the PC, EEPROM / SRAM /
+flash saves and the RTC, the open-source IPL3 boot code, and iQue Player support
+without touching your sources.
+
+### Get the tools
+
+From a checkout of `main`, one command does the whole thing — it shallow-clones the
+branch into `n64dev/`, makes the binaries executable, writes `n64dev/env.sh` next to the
+checkout, and checks that the tree is complete and that the compiler, linker and
+emulator actually run. It **compiles nothing** (~4 s, `git` and the network are all it
+needs); verifying a real build is a deliberate step afterwards:
+
+```bash
+./bootstrap.sh n64dev
+cd n64dev && ./setup.sh --verify      # 0.2 s: build a ROM, link it, check its header
+```
+
+By hand it is the same two lines the script runs, and just as complete — the checkout
+**is** the installation, so nothing has to be installed:
+
+```bash
+git clone --depth 1 --single-branch --branch n64dev \
+    https://github.com/Parisoft/homebrew-tools.git n64dev
+cd n64dev && . ./setup.sh        # or: . ./n64dev/env.sh, from anywhere
+```
+
+```
+n64dev/
+├── setup.sh       # exports the environment; --verify / --smoke-test / --verify-all
+├── AGENTS.md      # the operational version of the text you are reading
+├── libdragon/     # $N64_INST: include/n64.mk, bin/, mips64-elf/{include,lib}
+│   ├── toolchain/ #   mips64-elf GCC 16.2.0 + binutils 2.45 + newlib 4.4.0
+│   ├── examples/  #   upstream games: compiling them is the install test (22 ROMs)
+│   └── src/       #   2 private headers, needed only by examples/audioplayer
+└── ares-mcp/      # headless N64 emulator: bin/ares-mcp + test/ (e2e, boot_check.py)
+```
+
+### Setup — one script, and the environment it exports
+
+`setup.sh` only exports variables, so **source it again in every shell you open**.
+An agent's tool calls usually each start a fresh process, and the previous `export`s
+die with their shell, so the pattern that works is to prefix build commands:
+
+```bash
+cd ~/n64dev && . ./setup.sh && make -C libdragon/examples/rdpqdemo
+```
+
+```bash
+. ./setup.sh              # N64_INST, N64_GCCPREFIX, PATH, N64_MCP — 0.003 s, repeatable
+./setup.sh --verify       # builds a ROM in a temp dir, checks its header        (0.2 s)
+./setup.sh --smoke-test   # ...then boots it in ares-mcp over MCP               (2.3 s)
+./setup.sh --verify-all   # all 22 example ROMs + the emulator's 27-check suite  (~18 s)
+```
+
+Sourcing is silent by design — it only exports, and an agent that prefixes every
+command with it should not pay for chatter. Which is just the three variables upstream's
+own install uses:
+
+| Variable | Meaning |
+|---|---|
+| `N64_INST` | **Required.** Root of the libdragon install. `n64.mk` is read from `$(N64_INST)/include/n64.mk`, headers from `$(N64_INST)/mips64-elf/include`, libraries from `$(N64_INST)/mips64-elf/lib`, asset tools from `$(N64_INST)/bin`. |
+| `N64_GCCPREFIX` | Root holding `bin/mips64-elf-*`. Defaults to `N64_INST`; on this branch it is `libdragon/toolchain/`, i.e. the compiler sits inside the SDK folder as a sibling of `include/` and `bin/`, which is what lets one clone carry both. |
+| `N64_TARGET` | Triplet of the cross toolchain, `mips64-elf`. Keep the **64-bit** one — libdragon's point is the `o64` ABI (full 64-bit R4300 registers), which the old 32-bit `mips-elf` toolchains cannot emit. |
+
+On a machine that already has libdragon's official rolling toolchain package —
+`gcc-toolchain-mips64-x86_64.deb` (there is also an `.rpm`, an aarch64 build and a
+Windows zip, from the release tag `toolchain-continuous-prerelease`) — `setup.sh`
+skips the in-tree compiler and uses `/opt/libdragon`, which that package also exports
+as `N64_INST` itself through `/etc/profile.d`. Shipping the compiler inside the branch
+instead is deliberate: **GitHub release assets are not reachable from every sandbox**
+(`release-assets.githubusercontent.com` is firewalled in the one this branch was built
+in, and `sudo` is unavailable there), and rebuilding the compiler from source costs
+~42 minutes that a resetting sandbox pays again and again. Trimmed to 162 MB with no
+file over 33 MB it fits GitHub's per-object cap, and a flat tree means no extraction
+step either.
+
+Verify by hand if you prefer — the asset tools have no `--version`, so their usage
+banner is the check:
+
+```console
+$ mips64-elf-gcc --version
+mips64-elf-gcc (GCC) 16.2.0
+$ ls "$N64_INST/mips64-elf/lib"
+dso.ld  libdragon.a  libdragonsys.a  n64.ld  rsp.ld
+$ "$N64_INST/bin/n64tool"
+Usage: n64tool [flags] [file-flags] <file> [[file-flags] <file> ...]
+$ "$N64_INST/bin/mksprite"
+Usage: mksprite [flags] <input files...>
+```
+
+Measured in a 2-core sandbox, cold: clone 6 s, setup 0.003 s, one ROM 0.2 s, all
+22 ROMs 17 s.
+
+### Quickstart — build a ROM
+
+```console
+$ . ./setup.sh
+$ make -C libdragon/examples helloworld
+Using N64_INST=/home/me/n64dev/libdragon
+    [CC] src/main.c
+    [LD] build/helloworld.elf
+      text       data        bss      total filename
+    145240      41996       3688     190924 build/helloworld.elf
+    [Z64] helloworld.z64
+$ od -An -tx1 -N8 libdragon/examples/helloworld/helloworld.z64
+ 80 37 12 40 00 00 00 00          # PI boot CIC word + zero reset: a real N64 ROM
+```
+
+A game is a Makefile that includes `n64.mk` plus its sources — do not hand-roll
+rules, they are the part libdragon changes between releases (this is
+`libdragon/examples/helloworld/Makefile` with the comments removed):
+
+```makefile
+ROMNAME := mygame
+BUILD_DIR = build
+C_FILES := $(shell find src -name '*.c')
+OBJS := $(addprefix $(BUILD_DIR)/,$(C_FILES:.c=.o))
+
+include $(N64_INST)/include/n64.mk
+
+all: $(ROMNAME).z64
+$(BUILD_DIR)/$(ROMNAME).elf: $(OBJS)
+
+$(ROMNAME).z64: N64_ROM_TITLE    = "My Game"    # ROM header…
+$(ROMNAME).z64: N64_ROM_SAVETYPE = eeprom4k     # …battery save…
+$(ROMNAME).z64: N64_ROM_RTC      = true         # …and cart/emulator hints
+
+clean:
+	$(RM) -r $(BUILD_DIR) *.z64
+```
+
+Assets are just more pattern rules, and `n64.mk` already knows their tools:
+`filesystem/%.sprite: assets/%.png` through `mksprite`, `.wav`/`.xm`/`.ym` through
+`audioconv64`, a font through `mkfont`, and `$(BUILD_DIR)/$(ROMNAME).dfs` builds the
+in-ROM filesystem with `mkdfs` — link that in and `fopen("rom://…")` finds it.
+`n64.mk` supplies the `%.z64` (strip → `n64elfcompress` → `n64tool` →
+`ed64romconfig`), `%.dfs`, `%.v64` and `%.dso` (+ `%.externs`, `%.msym`) rules and
+the `N64_ROM_*` knobs (`TITLE`, `CATEGORY`, `REGION`, `REGIONFREE`, `SAVETYPE`,
+`RTC`, `CONTROLLER1..4`).
+
+### Running the ROM
+
+The branch ships the runner, so verifying a build needs no display:
+
+```bash
+ares-mcp run --rom mygame.z64 --homebrew --frames 600 --screenshot /tmp/s.png --wav /tmp/a.wav
+python3 ares-mcp/test/boot_check.py --rom mygame.z64      # BOOT OK / BOOT FAIL, exit code
+python3 ares-mcp/test/mcp_client.py --rom mygame.z64      # one-shot MCP session
+```
+
+`ares-mcp mcp` is the same core as an MCP server for interactive work: advance frames,
+tap buttons and both analog axes (ports 1-4), read the emulator log including CPU
+exceptions, capture PNG/WAV, load save states, attach GDB via `--gdb-port`. **One
+honest limit:** RDP-rendered pixels need a Vulkan driver *and* an ares build with
+paraLLEl-RDP, whose deps come from a GitHub release asset — unavailable where this
+binary was built, so screenshots of RDP-drawn scenes are blank while emulation, input,
+audio, the log and GDB all work; `ares-mcp/test/green.z64`, drawn by the CPU, is the
+control that proves the pixel path itself. For full-accuracy video use
+[Ares](https://github.com/ares-emulator/ares) with *Homebrew mode* on a GPU machine. On hardware any cart that
+loads custom ROMs works (SC64, 64drive, EverDrive64); use a loader that speaks
+libdragon's debug protocol — [UNFLoader](https://github.com/buu342/N64-UNFLoader),
+[g64drive](https://github.com/rasky/g64drive), [ed64log](https://github.com/anacierdem/ed64)
+— to see `debugf()` in a console.
+
+### Rebuilding the SDK that the branch ships
+
+The emulator is the easier rebuild: the fork vendors everything and
+`-DARES_BUILD_MCP=ON` skips the GUI, SDL and the prebuilt deps payload.
+
+```bash
+pip install --break-system-packages cmake ninja     # the image has neither
+git clone https://github.com/Parisoft/ares-mcp && cd ares-mcp
+cmake -B build -G Ninja -DARES_BUILD_MCP=ON -DCMAKE_BUILD_TYPE=Release
+ninja -C build mcp -j2                              # 98 targets, ~5 min on 2 cores
+python3 mcp/test/mcp_client.py                      # 27 checks -> "ALL OK"
+strip -s build/rundir/bin/ares-mcp                   # 6.9 MB -> 6.0 MB
+```
+
+libdragon needs the cross-compiler first:
+
+```bash
+git clone https://github.com/DragonMinded/libdragon.git && cd libdragon
+export N64_INST=<install-prefix> N64_GCCPREFIX=<toolchain-prefix>
+make install-mk && make libdragon tools
+make install && make tools-install
+```
+
+Upstream's `./build.sh` does the same but then builds the examples *inside* the
+tree, which proves nothing about the install; instead copy the folder out and
+compile it against the installed SDK only:
+
+```bash
+mkdir -p <test> && cp -a <libdragon-src>/examples <test>/examples
+make -C <test>/examples -j"$(nproc)"     # expect 22 .z64, 6 .dso, 10 .dfs, 0 errors
+```
+
+`audioplayer` is the single example that reaches into libdragon's private headers
+(`../../src/audio/libxm/xm_internal.h`); the branch keeps just those two headers in
+`libdragon/src/`, so the matrix is 22/22 with no symlinks and no skips. Then ship only
+what survived — `include/`, `bin/`, `mips64-elf/` of `<install-prefix>` — plus a
+trimmed copy of the compiler, all under `libdragon/`, on an orphan branch:
+
+```bash
+git checkout --orphan n64dev && git rm -rf .
+cp -a <install-prefix> libdragon && cp -a <test>/examples libdragon/examples
+mkdir -p libdragon/src/audio/libxm
+cp <libdragon-src>/src/audio/libxm/{xm.h,xm_internal.h} libdragon/src/audio/libxm/
+cp -a <toolchain-prefix> libdragon/toolchain && cd libdragon/toolchain
+rm -rf share include lib/libcc1.so* lib/bfd-plugins bin/mips64-elf-lto-dump \
+       lib/gcc/mips64-elf/*/plugin lib/gcc/mips64-elf/*/install-tools
+rm -rf mips64-elf/lib/{el,soft-float} lib/gcc/mips64-elf/*/el lib/gcc/mips64-elf/*/soft-float
+find bin libexec mips64-elf/bin -type f -perm -u+x -exec strip -s {} +
+find mips64-elf/lib lib/gcc -type f \( -name '*.a' -o -name '*.o' \) \
+     -exec ./bin/mips64-elf-strip --strip-debug {} +      # 1.6 GB -> 162 MB
+cd ../..
+# -f is not decorative: a root .gitignore containing *.o silently dropped
+# libdragon/toolchain/lib/gcc/.../crt*.o from the first commit, and only the file
+# count revealed it - those objects are what every link needs.
+git add -f -A . && git commit -m "n64dev: prebuilt libdragon SDK" && git push -f origin n64dev
+```
+
+Three traps in that trim, all of them hit while doing it (they are recorded with more
+detail in `libdragon/BUILD.txt`): `mips64-elf/bin/` must stay, because GCC searches it
+for `as`/`ld` and silently falls back to the host binutils otherwise; `libc.a`/`libg.a`
+are hardlinks, so stripping one in place truncates the other; and the *host* `strip`
+cannot read MIPS objects — it reports an error and changes nothing, so use
+`mips64-elf-strip` for the target archives.
+
+If the **cross-compiler** itself has to be rebuilt, libdragon pins its versions in
+`tools/build-toolchain.sh` (binutils 2.45, GCC 16.2.0, newlib 4.4.0.20231231 at the
+time of writing) and that script does the whole job. Two notes from having done it on
+a machine that could reach nothing but GitHub and PyPI:
+
+* the sources come from git mirrors instead of the FTP sites —
+  `gnutools/binutils-gdb@binutils-2_45`, `gcc-mirror/gcc@releases/gcc-16.2.0`,
+  `mirror/newlib-cygwin@newlib-4.4.0` — and GMP/MPFR/MPC/zlib/m4/gperf/bison/flex
+  come from wheels: `pip install --target=<pfx> --no-deps cmeel-gmp cmeel-mpfr
+  cmeel-mpc cmeel-zlib cmeel-m4 cmeel-gperf bison-bin flex-bin`, then
+  `--with-gmp=<pfx> --with-mpfr=<pfx> --with-mpc=<pfx>` plus
+  `-I<pfx>/include -L<pfx>/lib -Wl,-rpath,<pfx>/lib` (cmeel keeps `libz` in `lib64/`);
+* git trees have no generated parsers, so `bison` and `flex` must really be on
+  `PATH` (`export M4=<pfx>/bin/m4` or bison fails), and `makeinfo` is best replaced
+  by a stub that only creates the `-o` file — binutils' own `missing` wrapper exits
+  127 and kills `bfd`.
 
 ## Tooling for reverse-engineer arcade games
+
+Build artifacts and tooling for arcade ROM **disassembly** and **porting to new
+systems**, driven by AI agents.
 
 Agents use these binaries to reverse-engineer arcade games: load a game into a
 headless [MAME](https://www.mamedev.org/) and drive it over the
@@ -103,6 +374,8 @@ porting a game's logic to a new platform.
 
 | Branch | Contents |
 |---|---|
+| `n64dev` | **libdragon** SDK + **mips64-elf** GCC toolchain + examples + **ares-mcp** headless emulator (N64 homebrew, self-contained) |
+| `nesdev` | **cc65** toolchain + **mesen-mcp** (NES / SNES development) |
 | `mame-konami` | Headless **konami** MAME binary + MCP server |
 | `mame-capcom` | Headless **capcom** MAME binary + MCP server |
 | `mame-sega` | Headless **sega** MAME binary + MCP server |
@@ -111,8 +384,9 @@ porting a game's logic to a new platform.
 | `mame-technos` | Headless **technos** MAME binary + MCP server |
 | `main` | Default branch |
 
-Each `mame-<system>` branch is an orphaned delivery branch (no shared history
-with `main`).
+`n64dev`, `nesdev` and every `mame-<system>` branch is an orphaned delivery branch
+(no shared history with `main`): check one out, or clone it with
+`--branch <name> --single-branch`, and the tools are there.
 
 ## What a MAME binary gives an agent
 
