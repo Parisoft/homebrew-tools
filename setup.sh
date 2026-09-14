@@ -8,7 +8,7 @@
 #   . ./setup.sh                 # export the environment into the CURRENT shell
 #   ./setup.sh --print           # print the exports (for eval / another shell type)
 #   ./setup.sh --verify          # build examples/helloworld, check the ROM header
-#   ./setup.sh --verify-all      # build every upstream example (22 ROMs)
+#   ./setup.sh --verify-all      # build every preview example (40 ROMs)
 #   ./setup.sh --smoke-test      # build a ROM and boot it in ares-mcp, headless
 #
 # Why the dot-source form: an agent's shell usually does not persist between tool

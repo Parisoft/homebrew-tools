@@ -1,9 +1,9 @@
 # `n64dev` — build and run Nintendo 64 homebrew, no setup
 
 A self-contained N64 development environment on an **orphan branch** of
-[homebrew-tools](https://github.com/Parisoft/homebrew-tools): the libdragon SDK, its
-`mips64-elf` cross-compiler, the upstream examples, and a headless N64 emulator that
-speaks MCP. Nothing is installed, downloaded, built or configured — a sandbox that
+[homebrew-tools](https://github.com/Parisoft/homebrew-tools): the libdragon SDK
+(`preview`, `8ebe040`), its `mips64-elf` cross-compiler, the preview's examples, and a
+headless N64 emulator that speaks MCP. Nothing is installed, downloaded, built or configured — a sandbox that
 wiped itself comes back to a running ROM in seconds.
 
 **Agents: read [`AGENTS.md`](AGENTS.md) — it is the operational version of this file.**
@@ -15,11 +15,11 @@ n64dev/
 ├── libdragon/        # everything libdragon; this folder IS $N64_INST
 │   ├── BUILD.txt           provenance: commits, compiler, commands, trim recipe
 │   ├── include/n64.mk      the build system every project includes
-│   ├── bin/                13 host tools (n64tool, mksprite, audioconv64, mkdfs, …)
-│   ├── mips64-elf/         68 headers, libdragon.a, libdragonsys.a, n64.ld/dso.ld/rsp.ld
+│   ├── bin/                21 host tools (n64tool, mksprite, audioconv64, videoconv64, mkdfs, …)
+│   ├── mips64-elf/         119 headers, libdragon.a, libdragonsys.a, n64.ld/dso.ld/rsp.ld
 │   ├── toolchain/          mips64-elf GCC 16.2.0 + binutils 2.45 + newlib 4.4.0
-│   ├── examples/           upstream examples — compiling them is the install test
-│   └── src/audio/libxm/    2 private headers examples/audioplayer includes by path
+│   ├── examples/           preview examples — compiling them is the install test
+│   └── src/                4 private headers examples/audioplayer includes by path
 └── ares-mcp/         # everything emulator
     ├── BUILD.txt           provenance: commit, compiler, commands, self-test results
     ├── bin/ares-mcp        headless N64 core: MCP server (10 tools) + CLI runner
@@ -38,8 +38,8 @@ git clone --depth 1 --single-branch -b n64dev \
 cd n64dev
 ```
 
-~57 MiB transferred, one commit, and that is the whole installation: no package manager,
-no root, no network left to need. Do not switch to this branch inside a clone of `main`
+~71 MiB transferred, one commit, and that is the whole installation: no package
+manager, no root, no network left to need. Do not switch to this branch inside a clone of `main`
 — it is an orphan branch, so the checkout would replace your entire working tree.
 
 ## Build a ROM, then run it
@@ -57,7 +57,7 @@ Three checks, from fastest to most thorough — all run in a temp directory, so 
 ```bash
 ./setup.sh --verify        # compiles 1 ROM from scratch, checks its header   (0.2 s)
 ./setup.sh --smoke-test    # ...and boots it in ares-mcp over MCP             (2.3 s)
-./setup.sh --verify-all    # all 22 example ROMs + ares' 27-check e2e suite   (20 s)
+./setup.sh --verify-all    # all 40 example ROMs + ares' 27-check e2e suite   (35 s)
 ```
 
 ## Emulating with ares-mcp
@@ -113,9 +113,10 @@ clean:
 ```
 
 `cp -a libdragon/examples/helloworld ~/mygame` is the fastest start. Assets are pattern
-rules to the tools in `libdragon/bin` (`mksprite`, `audioconv64`, `mkfont`, `mkdfs`,
-`n64dso`), and the ROM header knobs are `N64_ROM_TITLE CATEGORY SAVETYPE RTC REGION
-REGIONFREE ELFCOMPRESS DSOCOMPRESS CONTROLLER1..4`. API docs: libdragon's
+rules to the tools in `libdragon/bin` (`mksprite`, `audioconv64`, `videoconv64`,
+`mkfont`, `mkdfs` — DragonFS 2.1, `n64dso`), and the ROM header knobs are
+`N64_ROM_TITLE CATEGORY SAVETYPE RTC REGION REGIONFREE ELFCOMPRESS DSOCOMPRESS
+CONTROLLER1..4`. API docs: libdragon's
 [wiki](https://github.com/DragonMinded/libdragon/wiki) and the headers under
 `libdragon/mips64-elf/include/`.
 
@@ -126,7 +127,10 @@ REGIONFREE ELFCOMPRESS DSOCOMPRESS CONTROLLER1..4`. API docs: libdragon's
   ares themselves, build from source — the commands are recorded in the two `BUILD.txt`
   files and the cross-compiler recipe is in the
   [`main` branch README](https://github.com/Parisoft/homebrew-tools/blob/main/README.md).
-* libdragon **trunk `c4a7e11`** + GCC 16.2.0 + binutils 2.45 + newlib 4.4.0, and
-  **ares-mcp `69ecdb6`**; the SDK and compiler are matched pairs, so building against a
-  different libdragon revision may need `N64_INST` pointed at your own build (which
-  `setup.sh` honours).
+* libdragon **preview `8ebe040`** (DragonFS 2.1; `audioconv64 --wav-compress` takes
+  `none|vadpcm|ulc|opus` and `vadpcm,bits=<2|3|4>`) + GCC 16.2.0 + binutils 2.45 +
+  newlib 4.4.0, and **ares-mcp `69ecdb6`**; the SDK and compiler are matched pairs, so
+  building against a different libdragon revision may need `N64_INST` pointed at your
+  own build (which `setup.sh` honours). Note that this branch's `dumpdfs` only lists
+  DragonFS 2.1 filesystems — keep a trunk `dumpdfs` if you still need to list DragonFS
+  2.0 cartridges.

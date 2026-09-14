@@ -1,8 +1,9 @@
 # AGENTS.md — N64 homebrew on `n64dev`
 
 Everything needed to **build** and **run** N64 homebrew is already in this folder: the
-libdragon SDK, its `mips64-elf` cross-compiler, upstream's examples, and a headless
-emulator you can drive over MCP. No installs, no downloads, no root, no build steps.
+libdragon SDK (the `preview` branch, `8ebe040`), its `mips64-elf` cross-compiler, the
+preview's examples, and a headless emulator you can drive over MCP. No installs, no
+downloads, no root, no build steps.
 
 ## 1. Set up — in *every* shell
 
@@ -29,7 +30,7 @@ In a shell that cannot source scripts: `eval "$(~/n64dev/setup.sh --print)"`.
 |---|---|---|
 | `./setup.sh --verify` | compiler + SDK compile and link a ROM, header is `80 37 12 40` | 0.2 s |
 | `./setup.sh --smoke-test [rom.z64]` | the ROM **boots in the emulator**: MCP handshake, load, 120 frames, status, log | 2.3 s |
-| `./setup.sh --verify-all` | all 22 upstream examples build (22 `.z64`, 6 `.dso`, 10 `.dfs`) | 17 s |
+| `./setup.sh --verify-all` | all 33 preview examples build (40 `.z64`, 8 `.dso`, 20 `.dfs`) | 35 s |
 
 ```
 n64dev OK  -  1 ROM(s), header 80371240, toolchain: in-tree
@@ -44,10 +45,10 @@ every ROM problem is in your code or Makefile. `--smoke-test` with no argument b
 
 | path | contents |
 |---|---|
-| `libdragon/` | **is** `$N64_INST`: `include/n64.mk`, `bin/` (13 asset/ROM tools), `mips64-elf/include` (68 headers), `mips64-elf/lib` (`libdragon.a`, `libdragonsys.a`, `n64.ld`, `dso.ld`, `rsp.ld`) |
+| `libdragon/` | **is** `$N64_INST`: `include/n64.mk`, `bin/` (21 asset/ROM tools), `mips64-elf/include` (119 headers + `*.inc` + `ucode.S` + `libcart/` + `fatfs/`), `mips64-elf/lib` (`libdragon.a`, `libdragonsys.a`, `n64.ld`, `dso.ld`, `rsp.ld`) |
 | `libdragon/toolchain/` | mips64-elf GCC 16.2.0 + binutils 2.45 + newlib 4.4.0, trimmed 1.6 GB → 162 MB (`libdragon/BUILD.txt` has the recipe and its traps) |
 | `libdragon/examples/` | upstream examples, verified to build against the SDK above and boot in the emulator below |
-| `libdragon/src/audio/libxm/` | 2 private headers `examples/audioplayer` includes as `../../src/...` |
+| `libdragon/src/` | 4 private headers `examples/audioplayer` includes as `../../src/...` (`audio/libxm/xm.h`, `audio/libxm/xm_internal.h`, `audio/mixer_internal.h`, `accounting_internal.h`) |
 | `ares-mcp/bin/ares-mcp` | headless N64 core: `mcp` (JSON-RPC 2.0 stdio server, 10 tools) and `run` (CLI) |
 | `ares-mcp/test/` | its 27-check e2e suite (`mcp_client.py`, works on any ROM via `--rom`), test-ROM generators, `green.z64` |
 
@@ -98,9 +99,12 @@ Start from `cp -a libdragon/examples/helloworld ~/mygame`. Flags `n64.mk` sets f
 `-march=vr4300 -mtune=vr4300 -mabi=o64 -I$(N64_INCLUDEDIR)` (`o64` is the point of
 libdragon — do not "fix" it), RSP asm gets `-march=mips1 -mabi=32`, plus
 `--build-id=none` and a `-Map`. Assets: `filesystem/%.sprite: assets/%.png` via
-`mksprite`, `.wav`/`.xm`/`.ym` via `audioconv64`, fonts via `mkfont`, and
-`$(BUILD_DIR)/$(ROMNAME).dfs` via `mkdfs` → `fopen("rom://…")`. DSO overlays: `n64dso`,
-see `examples/overlays`. `-Werror` is on in the examples.
+`mksprite`, `.wav`/`.xm`/`.ym` via `audioconv64`, movies via `videoconv64`, fonts via
+`mkfont`, and `$(BUILD_DIR)/$(ROMNAME).dfs` via `mkdfs` (DragonFS 2.1) →
+`fopen("rom://…")`. `audioconv64 --wav-compress` takes `none|vadpcm|ulc|opus` (or
+`0|1|2|3`) and the VADPCM bit depth via `vadpcm,bits=<2|3|4>` (default 4) — use
+`vadpcm,bits=2` for the tightest VADPCM. DSO overlays: `n64dso`, see
+`examples/overlays`. `-Werror` is on in the examples.
 
 ## 6. Do NOT
 
@@ -133,11 +137,13 @@ see `examples/overlays`. `-Werror` is on in the examples.
   and check its usage banner.
 * `.z64` files are console binaries: never `./game.z64`, never `file`-depend on it
   either (`file` is often absent). `od -An -tx1 -N8 game.z64` → `80 37 12 40 00 00 00 00`.
-* Building the examples writes into `libdragon/examples/*/` (`build/`, `*.z64`,
-  `*.dfs`), so `git status` shows ~40 untracked entries. Expected; `make -C
-  libdragon/examples clean` undoes it. Be careful with `git clean -xdf` here: it is
-  fine for build output, but it also removes anything of yours that is untracked
-  (assets you generated, scratch ROMs).
+* Building the examples writes into `libdragon/examples/*/`: `build/` is
+  git-ignored, but the `*.z64` ROMs and the generated `filesystem/*` assets are not,
+  so `git status` shows ~210 untracked entries. Expected; `make -C
+  libdragon/examples clean` undoes it (it leaves `videoplayer/caminandes.ogv`, the
+  movie's download marker — delete it by hand). Be careful with `git clean -xdf`
+  here: it is fine for build output, but it also removes anything of yours that is
+  untracked (assets you generated, scratch ROMs).
 * `make -C libdragon/examples <name>` builds one example; `audioplayer` needs
   `libdragon/src/` to exist (it is there) — if you copy examples elsewhere, copy that too
   or drop `audioplayer` from the run.
@@ -150,12 +156,12 @@ see `examples/overlays`. `-Werror` is on in the examples.
 
 | step | time |
 |---|---|
-| `git clone --depth 1 --single-branch -b n64dev` (~57 MiB) | 5 s |
+| `git clone --depth 1 --single-branch -b n64dev` (~71 MiB) | 5 s |
 | `. ./setup.sh` | 0.003 s |
 | `./setup.sh --verify` | 0.2 s |
 | `make -C libdragon/examples rdpqdemo` (one game) | 0.5 s |
 | `./setup.sh --smoke-test` (build + boot + 120 frames) | 2.3 s |
-| `./setup.sh --verify-all` (22 ROMs) | 17 s |
+| `./setup.sh --verify-all` (40 ROMs) | 35 s |
 | `python3 ares-mcp/test/mcp_client.py` (27 checks) | 2.4 s |
 | rebuilding the cross-compiler instead (do not) | 2540 s |
 
