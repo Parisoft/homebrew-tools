@@ -15,8 +15,8 @@ n64dev/
 ├── libdragon/        # everything libdragon; this folder IS $N64_INST
 │   ├── BUILD.txt           provenance: commits, compiler, commands, trim recipe
 │   ├── include/n64.mk      the build system every project includes
-│   ├── bin/                13 host tools (n64tool, mksprite, audioconv64, mkdfs, …)
-│   ├── mips64-elf/         68 headers, libdragon.a, libdragonsys.a, n64.ld/dso.ld/rsp.ld
+│   ├── bin/                21 host tools (n64tool, mksprite, audioconv64, videoconv64, …)
+│   ├── mips64-elf/         139 headers, libdragon.a, libdragonsys.a, n64.ld/dso.ld/rsp.ld
 │   ├── toolchain/          mips64-elf GCC 16.2.0 + binutils 2.45 + newlib 4.4.0
 │   ├── examples/           upstream examples — compiling them is the install test
 │   └── src/audio/libxm/    2 private headers examples/audioplayer includes by path
@@ -57,7 +57,7 @@ Three checks, from fastest to most thorough — all run in a temp directory, so 
 ```bash
 ./setup.sh --verify        # compiles 1 ROM from scratch, checks its header   (0.2 s)
 ./setup.sh --smoke-test    # ...and boots it in ares-mcp over MCP             (2.3 s)
-./setup.sh --verify-all    # all 22 example ROMs + ares' 27-check e2e suite   (20 s)
+./setup.sh --verify-all    # ~40 preview example ROMs + ares' 27-check e2e suite (20 s)
 ```
 
 ## Emulating with ares-mcp
@@ -126,7 +126,8 @@ REGIONFREE ELFCOMPRESS DSOCOMPRESS CONTROLLER1..4`. API docs: libdragon's
   ares themselves, build from source — the commands are recorded in the two `BUILD.txt`
   files and the cross-compiler recipe is in the
   [`main` branch README](https://github.com/Parisoft/homebrew-tools/blob/main/README.md).
-* libdragon **trunk `c4a7e11`** + GCC 16.2.0 + binutils 2.45 + newlib 4.4.0, and
+* libdragon **preview `8ebe040`** (DragonFS 2.1, WAV64 v10, audioconv64
+  `vadpcm,bits=<2|3|4>`) + GCC 16.2.0 + binutils 2.45 + newlib 4.4.0, and
   **ares-mcp `69ecdb6`**; the SDK and compiler are matched pairs, so building against a
   different libdragon revision may need `N64_INST` pointed at your own build (which
   `setup.sh` honours).

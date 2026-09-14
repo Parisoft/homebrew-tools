@@ -29,7 +29,7 @@ In a shell that cannot source scripts: `eval "$(~/n64dev/setup.sh --print)"`.
 |---|---|---|
 | `./setup.sh --verify` | compiler + SDK compile and link a ROM, header is `80 37 12 40` | 0.2 s |
 | `./setup.sh --smoke-test [rom.z64]` | the ROM **boots in the emulator**: MCP handshake, load, 120 frames, status, log | 2.3 s |
-| `./setup.sh --verify-all` | all 22 upstream examples build (22 `.z64`, 6 `.dso`, 10 `.dfs`) | 17 s |
+| `./setup.sh --verify-all` | all preview examples build (~40 `.z64`; skips dfsdemo, compression) | 17 s |
 
 ```
 n64dev OK  -  1 ROM(s), header 80371240, toolchain: in-tree
@@ -44,7 +44,7 @@ every ROM problem is in your code or Makefile. `--smoke-test` with no argument b
 
 | path | contents |
 |---|---|
-| `libdragon/` | **is** `$N64_INST`: `include/n64.mk`, `bin/` (13 asset/ROM tools), `mips64-elf/include` (68 headers), `mips64-elf/lib` (`libdragon.a`, `libdragonsys.a`, `n64.ld`, `dso.ld`, `rsp.ld`) |
+| `libdragon/` | **is** `$N64_INST`: `include/n64.mk`, `bin/` (21 asset/ROM tools), `mips64-elf/include` (139 headers), `mips64-elf/lib` (`libdragon.a`, `libdragonsys.a`, `n64.ld`, `dso.ld`, `rsp.ld`) |
 | `libdragon/toolchain/` | mips64-elf GCC 16.2.0 + binutils 2.45 + newlib 4.4.0, trimmed 1.6 GB → 162 MB (`libdragon/BUILD.txt` has the recipe and its traps) |
 | `libdragon/examples/` | upstream examples, verified to build against the SDK above and boot in the emulator below |
 | `libdragon/src/audio/libxm/` | 2 private headers `examples/audioplayer` includes as `../../src/...` |
@@ -155,7 +155,7 @@ see `examples/overlays`. `-Werror` is on in the examples.
 | `./setup.sh --verify` | 0.2 s |
 | `make -C libdragon/examples rdpqdemo` (one game) | 0.5 s |
 | `./setup.sh --smoke-test` (build + boot + 120 frames) | 2.3 s |
-| `./setup.sh --verify-all` (22 ROMs) | 17 s |
+| `./setup.sh --verify-all` (~40 ROMs) | 17 s |
 | `python3 ares-mcp/test/mcp_client.py` (27 checks) | 2.4 s |
 | rebuilding the cross-compiler instead (do not) | 2540 s |
 
