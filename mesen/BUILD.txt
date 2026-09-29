@@ -1,11 +1,11 @@
-mesen-mcp f33a8af
+mesen-mcp fcddb5b
 ================================================================================
 source       https://github.com/Parisoft/MesenMCP
-commit       f33a8af25d750532de00803cd50ccf43e44fdd70
-commit date  2026-08-29
-built        2026-08-29T23:48:33Z (UTC)
+commit       fcddb5b842706beb4cdbd7d3cb450f5c3b7d9733
+commit date  2026-09-29
+built        2026-09-29T20:15:55Z (UTC)
 platform     linux x86_64  (Linux 6.1.158+ x86_64)
 compiler     g++ (Debian 12.2.0-14+deb12u1) 12.2.0
 build cmd    make -j2   (C++17, -O2, no SDL/X11/.NET runtime needed)
-tests        "make test" -> 97/97 checks passed
-sha256       c5219f43b66c1cdcc9af79c977b3427a0ef26a0d26bdce786f7aa28746976824
+tests        "make test" -> 97/97 smoke + 38/38 input checks passed
+sha256       6c58582eeb2e651a7bca02f33fa4bf2c172b7b28b1f2cee09fca720bbb8e809d
